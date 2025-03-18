@@ -22,11 +22,10 @@ $(TARGET): $(OBJECTS)
 
 doc:
 	doxygen Doxyfile
-	$(MAKE) -C doc/latex
 
 # 清理生成的文件
 clean:
 	rm -f $(OBJECTS) $(TARGET)
 	rm -rf doc 
 	rm -f *.bmp
-.PHONY: all clean doc pdf
+.PHONY: all clean doc 

@@ -52,6 +52,8 @@ Run ```make clean``` to remove all generated files.
 
 # Dependencies
 
+**This project includes stb_image_write.h, which is part of the STB library and is used for image processing.**
+
 The function definitions are placed in the Conway.h file, and the function implementations are in the Conway.c file. The main function, test programs, and ncurses environment are in the main.c file. The ncurses library is used to create the text-based user interface, providing screen drawing and keyboard input handling functions. The stb_image_write.h is used to save image files, supporting the saving of game states in BMP format.
 
 

@@ -1,0 +1,90 @@
+\documentclass[12pt,a4paper]{ctexart}
+\pagestyle{plain}
+\usepackage{amsmath, amssymb}
+
+
+\newtheorem{theorem}{定理}[section]  
+\newtheorem{definition}{定义}
+\newtheorem{property}{性质}
+\newtheorem{proposition}{命题}
+
+\title{Mandelbrot 集及其算法实现}
+\author{张子乐 \\ 统计学2301}
+\date{\today}
+
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+  本文介绍了 Mandelbrot 集合的数学定义和性质，以及在计算机上实现的算法. 
+  通过详细的描述和示例代码，展示了如何利用编程语言生成 Mandelbrot 集合的图像. 
+\end{abstract}
+
+\section{引言}
+Mandelbrot 集是一种经典的分形结构,  由数学家 Benoît B. Mandelbrot 在 20 世纪 70 年代提出.1980年，他首次可视化了这个集合.
+\cite{Mandelbrot2017structural}
+Mandelbrot集是分形几何中最著名的例子之一，以其无限复杂和自相似的边界结构而闻名.
+本文将首先介绍 Mandelbrot 集合的数学定义和性质，然后探讨其实现算法. 
+
+\section{Mandelbrot集的数学原理}
+
+\begin{definition}
+    记$f_c(z)=z^2+c$, 其中$c\in\mathbb{C}$. 记$f_c^{\circ(0)}(z)=f_c(z)$, 
+    迭代地定义$f^{\circ(k)}_c(z)=f_c(f^{\circ(k-1)}_c(z))\;(k\geq 1)$. 称集合
+    \begin{equation*}
+        \mathcal{M}=\{c \in \mathbb{C} : \exists r > 0, | f_c^{\circ(n)}(0) | \leq r, \, \forall n \in \mathbb{N}\}
+        \cite{Mandelbrot2017structural}
+    \end{equation*}
+    为\textbf{Mandelbrot集}.
+\end{definition}
+
+\begin{property}
+    \label{prop::bounded1}
+    Mandelbrot集是有界的.
+\end{property}
+证明见参考文献\cite{Mandelbrot2017structural}.在证明性质\ref{prop::bounded1}的过程中，我们会发现如下性质.
+
+\begin{property}
+    \label{prop::bounded2}
+    设$c\in\mathbb{C}$, 若$c\in\mathcal{M}$, 
+    则$|f_c^{\circ(n)}(0)|\leq 2\;(\forall n\in\mathbb{N})$.
+\end{property}
+这个定理是Mandelbrot集生成算法的基础. 
+
+\begin{theorem} \label{theorem:alpha}
+    对于$\alpha \in \mathbb{Q}$.
+    \begin{enumerate}
+    \item 当 $|\alpha| < 2 $ 时，存在有限多个完全实代数参数 $c$ 使得 $\alpha$ 是 $f_c$-预周期的.并且这个集合总是非空的.
+    \item 当 $|\alpha| \geq 2$ 时存在无穷多个完全实代数参数 $c$ 使得 $\alpha$ 是 $f_c$-预周期的. 
+    \end{enumerate}
+\end{theorem}
+$f_c$-预周期是复动力系统中的术语，指在$f_c$的迭代下，参数 $\alpha$ 的轨道最终会进入一个周期性的行为.
+事实上，使得 $\alpha$ 是$f_c$-预周期的所有完全实代数参数\(c\)（及其共轭）都位于广义Mandelbrot集合的实数部分.\cite{Mandelbrotset2024}
+
+\begin{property}
+    \label{prop::symmetric}
+    Mandelbrot集关于实轴对称.
+\end{property}
+证明见参考文献\cite{Mandelbrot2017structural}.
+
+\section{算法实现}
+为了绘制 Mandelbrot 集合,  可以采用 ``逃逸时间算法''. 该算法的基本步骤如下：
+
+\begin{enumerate}
+    \item 确定复平面上的范围和分辨率.
+    \item 对每个复数 $ c $, 从 $ z = 0 $ 开始迭代公式 $ z_{n+1} = z_n^2 + c $. 
+    \item 由性质\ref{prop::bounded2}, 如果在最大迭代次数内 $ |z| > 2 $,  
+    则认为 $ c $ 不属于 Mandelbrot 集合. 
+    \item 如果在迭代达到最大迭代次数时 $ |z| <= 2 $,则近似认为 $ c $ 属于 Mandelbrot 集合.
+    \item 属于Mandelbrot集合的点呈现白色. 
+    \item 根据逃逸速度为不属于集合的点赋予颜色. 
+\end{enumerate}
+
+\section{结论}
+Mandelbrot 集合不仅是数学研究的重要对象, 也是科学与艺术的结合体，其图像具有极高的美学价值. 
+Mandelbrot 集的生成算法是计算机图形学中的经典案例，展示了如何通过简单的数学规则生成复杂的图像.
+\bibliography{mandelbrot.bib}
+\bibliographystyle{unsrt}
+\end{document}

@@ -1,0 +1,6 @@
+- 在终端输入```make```编译程序
+- ```./pdadd YYYY-MM-DD```添加日期为**YYYY-MM-DD**的内容，输入'.'结束输入
+- ```./pdlist```按照时间顺序列出所有内容，```./pdlist YYYY-MM-DD YYYY-MM-DD```按照时间顺序列出改时间范围内的内容
+- ```./pdshow YYYY-MM-DD```列出指定日期的内容
+- ```./pdremove YYYY-MM-DD```删除指定日期的内容
+- ```./test.sh```运行测试脚本

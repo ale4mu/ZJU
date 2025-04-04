@@ -1,0 +1,26 @@
+
+# 先屏蔽所有文件
+*
+
+# 再放开需要保留的文件
+!*/
+!*.cpp
+!*.cc
+!*.h
+!*.hpp
+!*.md
+!*.tex
+!*.py
+!*.bib
+!*.png
+!*.jpg
+!Makefile
+!Doxyfile
+!*.dox
+!*.pdf
+
+# 屏蔽不需要的文件materials/
+*.aux
+*.log
+*.pdf
+

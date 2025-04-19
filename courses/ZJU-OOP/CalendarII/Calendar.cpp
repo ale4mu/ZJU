@@ -1,3 +1,14 @@
+/**
+ * @file Calendar.cpp
+ * @brief 实现日历打印功能
+ *
+ * 该文件包含日历打印功能的实现，包括：
+ * - Zeller公式计算星期
+ * - 单月日历生成
+ * - 多个月份打印
+ * - 完整日历打印
+ */
+
 #include <iostream>
 #include <vector>
 #include <cmath>
@@ -8,16 +19,33 @@
 #include <stdexcept>
 using namespace std;
 
-int Zeller(int year, int month, int day) // 根据Zeller公式计算某年某月某天是星期几
+/**
+ * @brief 使用Zeller公式计算某年某月某天是星期几
+ *
+ * @param year 年份
+ * @param month 月份
+ * @param day 日期
+ * @return int 星期几（0=周六，1=周日，2=周一，...，6=周五）
+ *
+ * @note 1月和2月被视为上一年的13月和14月
+ */
+int Zeller(int year, int month, int day)
 {
     if (month == 1 || month == 2) // 1月和2月被认为是上一年的13月和14月
     {
         month += 12;
         --year;
     }
-    return (year % 100 + (year % 100) / 4 + year / 400 - 2 * (year / 100) + 26 * (month + 1) / 10 + day - 1) % 7; // Zeller公式
+    int res = (year % 100 + (year % 100) / 4 + year / 400 - 2 * (year / 100) + 26 * (month + 1) / 10 + day - 1) % 7; // Zeller公式
+    if (res < 0)
+        res += 7;
+    return res;
 }
 
+/// @brief 将一个月的日历存储在一个二维数组中
+/// @param year
+/// @param month
+/// @return
 vector<vector<string>> Month(int year, int month) // 将一个月的日历存储在一个二维数组中
 {
     vector<vector<string>> singleMonth(7, vector<string>(21, " ")); // 将二维数组初始化
@@ -56,7 +84,10 @@ vector<vector<string>> Month(int year, int month) // 将一个月的日历存储
     }
     return singleMonth;
 }
-
+/// @brief 一排打印n个月
+/// @param year
+/// @param beginMonth
+/// @param n
 void PrintnMonth(int year, int beginMonth, int n) // 一排打印n个月
 {
     vector<vector<vector<string>>> row;
@@ -80,6 +111,9 @@ void PrintnMonth(int year, int beginMonth, int n) // 一排打印n个月
     }
 }
 
+/// @brief 打印12个月
+/// @param year
+/// @param n
 void PrintCalendar(int year, int n) // 打印12个月
 {
     if (n <= 0 || n > 12)
@@ -90,9 +124,9 @@ void PrintCalendar(int year, int n) // 打印12个月
     {
         throw invalid_argument("The year should be in the range of 1583 to 9999.");
     }
-    for (int i = 1; i <= 12 / n + 1; ++i)
+    for (int i = 1; i <= 12; i += n)
     {
-        PrintnMonth(year, (i - 1) * n + 1, n);
+        PrintnMonth(year, i, min(12 - i + 1, n));
     }
 }
 

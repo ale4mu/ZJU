@@ -18,7 +18,7 @@
 !Doxyfile
 !*.dox
 !*.pdf
-
+!*.ipynb
 # 屏蔽不需要的文件materials/
 *.aux
 *.log

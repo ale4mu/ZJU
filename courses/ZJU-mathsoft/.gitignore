@@ -19,6 +19,8 @@
 !*.dox
 !*.pdf
 !*.ipynb
+!*.bmp
+!*.bin
 # 屏蔽不需要的文件materials/
 *.aux
 *.log

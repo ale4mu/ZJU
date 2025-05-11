@@ -22,7 +22,9 @@
 │   ├── ExportPara 		
 │   │   └── export_cnn.ipynb
 │   │   └── parameters_cnn.bin
-│   └── ...
+│   └── data
+│       └── t10k-images-idx3-ubyte
+│       └── t10k-labels-idx1-ubyte
 └── ...
 ```
 #### 3.使用方法

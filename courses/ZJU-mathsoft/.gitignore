@@ -4,6 +4,7 @@
 
 # 再放开需要保留的文件
 !*/
+!*.ubyte
 !*.cpp
 !*.cc
 !*.h
@@ -21,8 +22,6 @@
 !*.ipynb
 !*.bmp
 !*.bin
-!data/
-!data/*
 # 屏蔽不需要的文件materials/
 *.aux
 *.log

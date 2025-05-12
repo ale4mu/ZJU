@@ -27,8 +27,8 @@
 !*.sh
 !*.txt
 !*.bin
-# 屏蔽不需要的文件materials/
-*.aux
-*.log
-*.pdf
+# 屏蔽不需要的文件
+materials/*.aux
+materials/*.log
+materials/*.pdf
 

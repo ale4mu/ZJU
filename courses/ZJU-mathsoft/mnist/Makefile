@@ -2,7 +2,7 @@ CC = gcc
 LDFLAGS = -lm
 
 SRC = src/mnist_cnn.c
-EXEC = test      # 输出到根目录
+EXEC = test     
 
 all: $(EXEC)
 

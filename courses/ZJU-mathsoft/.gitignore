@@ -1,0 +1,34 @@
+
+# 先屏蔽所有文件
+*
+
+# 再放开需要保留的文件
+!*/
+!*.ubyte
+!mnist/data/t10k-images-idx3-ubyte
+!mnist/data/t10k-labels-idx1-ubyte
+!*.cpp
+!*.c
+!*.cc
+!*.h
+!*.hpp
+!*.md
+!*.tex
+!*.py
+!*.bib
+!*.png
+!*.jpg
+!Makefile
+!Doxyfile
+!*.dox
+!*.pdf
+!*.ipynb
+!*.bmp
+!*.sh
+!*.txt
+!*.bin
+# 屏蔽不需要的文件
+materials/*.aux
+materials/*.log
+materials/*.pdf
+

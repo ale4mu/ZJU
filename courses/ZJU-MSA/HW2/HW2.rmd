@@ -1,0 +1,343 @@
+---
+title: "Homework 2"
+author: "张子乐,3230104237"
+output:
+  pdf_document:
+    latex_engine: xelatex
+  html_document:
+    df_print: paged
+header-includes:
+  - \usepackage{ctex}
+---
+```{r setup, message = F, include=FALSE}
+options(htmltools.dir.version = FALSE)
+library(knitr)
+opts_knit$set(eval.after = 'fig.cap')
+library(tidyverse)
+library(reshape2)
+library(ggplot2)
+library(readxl)
+library(dplyr)
+library(readr)
+library(mice)
+library(Hmisc)
+library(naniar)
+library(showtext)
+showtext_auto()
+```
+
+## 数据预处理
+
+sample.xls 中有2份工作表，"Sheet1"和"Sheet2"，发现"Sheet1"在删除HDL-C的缺失值后与"Sheet2"完全一致。"Sheet1"的894行中有622行缺少HDL-C值，这无法使用插补的方法，而HDL-C值又是判断代谢综合征的重要变量，因此只能将这些行直接删除。于是选取"Sheet2"进行接下来的数据分析，对"Sheet2"进行数据预处理，将字符串格式转为数值格式。观察到smoke列和drunk列有多种不同的回答，统一改为“是”“否”。
+
+“Sheet2”剩下的272行中，有82行含有各种不同的缺失值,若直接删除会损失约30%的数据，这是难以接受的，于是使用多重插补的方法，对于连续型变量使用Predictive Mean Matching(pmm)，对二分类变量使用Logistic Regression Imputation(logreg)，而对于性别变量则直接删除含缺失值的行。
+
+```{r}
+clean <- function(df){
+  df <- df[-1, ]  # 删除中文描述的行
+  #print(str(df)) # 查看每列的类型
+  # 要转换成数值格式的列
+  numeric_cols <- c("age", "sbp", "dbp", "weight", "height", "FPG", "TG", "HDL-C") 
+  df <- df |> 
+    mutate(
+      across(all_of(numeric_cols), parse_number)
+    )
+  
+  # 观察到smoke列有多种回答
+  df <- df %>%
+    mutate(
+      smoke = case_when(
+        smoke == "是" ~ "是",
+        smoke %in% c("否", "已戒烟", "戒烟3年", "戒烟2个月") ~ "否",
+        TRUE ~ NA_character_
+      ) %>%
+        factor(levels = c("否", "是"))  
+    )
+  # 同样，drunk列有“是”“否”“无”三种回答
+  df <- df %>%
+    mutate(
+      drunk = case_when(
+        drunk == "是" ~ "是",
+        drunk %in% c("否", "无") ~ "否",
+        TRUE ~ NA_character_
+      ) %>%
+        factor(levels = c("否", "是"))  
+    )
+  
+  #df <- na.omit(df) # 删除含有缺失值的行
+  df <- df %>% filter(!is.na(gender))
+  
+  meth <- rep("pmm", ncol(df))
+  names(meth) <- names(df)  # 把列名赋给 meth
+  meth["smoke"] <- "logreg"
+  meth["drunk"] <- "logreg"
+  df <- suppressWarnings(mice(df, m = 10, maxit = 50, method =meth, printFlag = FALSE,seed=42)) #多重插补
+  df <- complete(df, 1) #选取第一个
+  #print(nrow(df)) # 打印剩下的行数
+  print("验证缺失值：")
+  print(colSums(is.na(df))) # 验证是否还存在缺失值
+  print("每列的类型：")
+  print(str(df)) # 再次查看每列的类型
+  return(df)
+}
+
+
+df2 <- read_excel("sample.xls",sheet = "Sheet2")
+df2 <- clean(df2) # 处理Sheet2
+df = df2 #不妨选df2作为接下来分析的对象
+
+# 查看修改后smoke和drunk的结果
+table(df$smoke, useNA = "always")
+table(df$drunk, useNA = "always")
+```
+
+后续需要用到BMI，因此计算BMI作为新的变量
+
+```{r}
+df <- df %>%
+  mutate(BMI = round(weight / (height / 100)^2, 2)) # BMI = 体重/ （身高的平方）
+print(head(df$BMI)) # 打印前几行BMI
+```
+接下来简单的观察异常值和数据分布形态，在后面的数据分析中再决定如何处理：
+
+```{r}
+numeric_vars <- c("age", "sbp", "dbp", "weight", "height", "FPG", "TG", "HDL-C","BMI")
+# 描述性统计分析
+df %>%
+  select(all_of(numeric_vars)) %>%
+  summary()
+```
+观察到这里的BMI出现了异常值581，我们找到那一行,发现体重和身高严重不匹配，于是将其删除。
+
+```{r}
+max_bmi <- max(df$BMI, na.rm = TRUE)
+max_bmi_row <- df[df$BMI == max_bmi, ]
+print(max_bmi_row)
+# 事实上这里直接选择将50作为BMI的合理阈值
+df <- df[df$BMI <= 50, ] 
+# df %>%
+#   select(all_of(numeric_vars)) %>%
+#   summary()
+```
+
+## 第一题
+
+### （1）相关性
+
+```{r}
+X <- df[, c("BMI", "FPG", "sbp", "dbp", "TG", "HDL-C")]
+cor_matrix <- cor(X)  
+round(cor_matrix, 3)
+
+res <- rcorr(as.matrix(X))
+cor_coef <- res$r                 # 相关系数
+cor_p <- res$P                    # p 值
+#print(round(cor_coef, 3))
+print(round(cor_p,3))
+```
+从结果来看，在95%置信水平下，BMI与FPG、sbp、dbp、TG具有显著的正相关性，与HDL-C具有显著的负相关性；FPG与sbp、dbp、TG具有显著的正相关关系，与HDL-C具有显著的负相关关系；sbp与dbp、TG具有显著的正相关关系；dbp与TG具有显著的正相关关系；TG与HDL-C具有显著的负相关关系。
+
+综上，SBP和DBP的正相关性最强，相关系数为0.799；HDL-C与其它变量均为负相关关系，与TG的负相关关系最强，相关系数为-0.335。
+
+### （2）分析患代谢综合症的比例有没有性别差异，与吸烟或喝酒是否有关？
+
+首先判断每个样本是否超重、高血糖、高血压、空腹血，从而判断是否患代谢综合症。结果为269个样本中有34人患有代谢综合征。
+
+```{r}
+df$Overweight <- ifelse(df$BMI >= 25, 1, 0) # 超重
+df$Hyperglycemia <- ifelse(df$FPG >= 6.1, 1, 0) # 高血糖
+df$HTN <- ifelse(df$sbp >= 140| df$dbp >= 90, 1, 0) # 高血压
+df$FBG <- ifelse(df$TG >= 1.7 | 
+                   (df$`HDL-C` < 0.9 & df$gender == "男") | 
+                   (df$`HDL-C` < 1 & df$gender == "女"), 1, 0) # 空腹血
+df$sick <- ifelse(rowSums(cbind(df$Overweight, 
+                                df$Hyperglycemia, 
+                                df$HTN, 
+                                df$FBG)) >= 3, 1, 0) # 是否患代谢综合征，1为患，0为不患
+table(df$sick)
+```
+判断患代谢综合征的比例有没有性别差异,34名患者中仅4名为女性。
+```{r}
+table(df$gender, df$sick)
+contingency_table <- table(df$gender, df$sick)
+chisq_test <- chisq.test(contingency_table) # 卡方检验
+#fisher.test(contingency_table)
+print(chisq_test)
+```
+原假设H0：患代谢综合征的比例没有显著的性别差异。
+备择假设H1：患代谢综合征的比例有显著的性别差异。
+
+通过卡方检验，p = 0.002638 < 0.05，拒绝原假设，选择备择假设，即患代谢综合征的比例有显著的性别差异。
+
+接下来分析患代谢综合征与吸烟或喝酒是否有关。
+
+```{r}
+sick_smoke <- table(df$smoke, df$sick)
+print(sick_smoke)
+chisq_test <- chisq.test(sick_smoke)
+print(chisq_test)
+```
+
+原假设H0：患代谢综合征的比例与是否吸烟没有显著关联。
+备择假设H1：患代谢综合征的比例与是否吸烟有显著关联。
+
+通过卡方检验，p = 0.1242 > 0.05，接受原假设，即患代谢综合征的比例与是否吸烟没有显著关联。
+
+```{r}
+sick_drunk <- table(df$drunk, df$sick)
+print(sick_drunk)
+chisq_test <- chisq.test(sick_drunk)
+print(chisq_test)
+```
+
+原假设H0：患代谢综合征的比例与是否喝酒没有显著关联。
+备择假设H1：患代谢综合征的比例与是否喝酒有显著关联。
+
+通过卡方检验，p = 0.00655 < 0.05，拒绝原假设，选择备择假设，即患代谢综合征的比例与是否喝酒显著有关。
+
+### （3）给出20~30年龄段， X各个指标的分布情况
+
+```{r}
+df0 <- subset(df, age >= 20 & age <= 30)
+X <- c("BMI", "FPG", "sbp", "dbp", "TG", "HDL-C")
+df_X <- df0[,X]
+#summary(df_X)
+
+# 直方图
+par(mfrow = c(2, 3))
+for (var in X) {
+  hist(df_X[[var]], 
+       breaks = 11, 
+       main = paste(var), 
+       xlab = var, 
+       col = "skyblue", 
+       border = "navy",
+       freq = FALSE)  
+  lines(density(df_X[[var]], na.rm = TRUE), col = "red", lwd = 2) 
+}
+par(mfrow = c(1, 1))
+
+# 箱线图
+par(mfrow = c(2, 3)) 
+for (var in X) {
+  boxplot(df_X[[var]], main = var, ylab = var, col = "lightblue", border = "darkgreen")
+}
+par(mfrow = c(1, 1))
+
+# 密度图
+X_long <- df_X %>%
+  pivot_longer(everything(), names_to = "Variable", values_to = "Value")
+ggplot(X_long, aes(x = Value, fill = Variable)) +
+  geom_density(alpha = 0.6) +
+  facet_wrap(~ Variable, scales = "free", ncol = 2) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 30))
+```
+
+### （4) 估计总体X
+
+```{r}
+X <- df[, c("BMI", "FPG", "sbp", "dbp", "TG", "HDL-C")]
+mean_vector <- colMeans(X, na.rm = TRUE) #均值向量
+cov_matrix <- cov(X, use = "complete.obs") #协方差矩阵
+cor_matrix <- cor(X, use = "complete.obs")# 相关矩阵
+result <- list(均值向量 = round(mean_vector, 3),协方差矩阵 = cov_matrix,相关矩阵=cor_matrix)
+print(result)
+```
+
+## 第二题
+
+```{r}
+set.seed(42)   
+
+test <- function(true_params){
+  nsim <- 500 #模拟次数                
+  n_list <- c(50, 100, 500)    # 不同样本量
+  
+  # 误差项的分布
+  distributions <- list(
+    normal = function(n) rnorm(n, 0, 1),
+    uniform = function(n) runif(n, -sqrt(3), sqrt(3)),  
+    t3 = function(n) rt(n, df = 3)                      
+  )
+  results <- data.frame()
+  
+  for (case in names(true_params)) {
+    true_theta <- true_params[[case]]
+    a_true <- true_theta[1]
+    b_true <- true_theta[2]
+    
+    for (n in n_list) {
+      for (distribution in names(distributions)) {
+        func <- distributions[[distribution]]
+        
+        # 存储每次模拟的估计值
+        a_hat <- numeric(nsim)
+        b_hat <- numeric(nsim)
+        
+        for (s in 1:nsim) {
+          
+          Y <- numeric(n + 2)  # 包含 Y[-1], Y[0]
+          Y[1:2] <- 0          # Y[-1] = Y[0] = 0
+          
+          # 生成误差项
+          eps <- func(n)
+          
+          # 生成时间序列
+          for (t in 3:(n+2)) {
+            Y[t] <- a_true * Y[t-1] + b_true * Y[t-2] + eps[t-2]
+          }
+          
+          Y_obs <- Y[3:(n+2)]           # Y1 ~ Yn
+          Y_lag1 <- Y[2:(n+1)]          # Y0 ~ Yn-1
+          Y_lag2 <- Y[1:n]              # Y-1 ~ Yn-2
+          
+          # 最小二乘估计：Y = Xβ + ε
+          # 把 AR(2) 模型写成线性回归的形式,β即为(a,b)
+          X <- cbind(Y_lag1, Y_lag2)
+          lm1 <-lm(Y_obs ~ X - 1)
+          coef_est <- coef(lm1)
+          a_hat[s] <- coef_est[1]
+          b_hat[s] <- coef_est[2]
+          
+        }
+        
+        # 用均值作为a的估计值
+        mean_a <- mean(a_hat,na.rm = TRUE)
+        mean_b <- mean(b_hat,na.rm = TRUE)
+        
+        # 计算MSE
+        mse_a <- mean((a_hat - a_true)^2, na.rm = TRUE)
+        mse_b <- mean((b_hat - b_true)^2, na.rm = TRUE)
+    
+        results <- rbind(results, data.frame(
+          n = n,
+          Distribution = distribution,
+          Parameter = "a",
+          True_Value = a_true,
+          Estimation = mean_a,
+          MSE = mse_a
+        ))
+        
+        results <- rbind(results, data.frame(
+          n = n,
+          Distribution = distribution,
+          Parameter = "b",
+          True_Value = b_true,
+          Estimation = mean_b,
+          MSE = mse_b
+        ))
+      }
+    }
+  }
+  print(results)
+}
+
+true_params1 <- list(case1 = c(a = 0.6, b = 0.3))
+true_params2 <- list(case2 = c(a = 0.2, b = 0.3))
+
+test(true_params1)
+test(true_params2)
+```
+
+从结果可以看出，随着样本容量的增加，均方误差越来越小，估计量越来越接近真实值。以a=0.6为例，样本容量为50时MSE为0.02左右，样本容量为100时MSE为0.01左右，而当样本容量增加到500，MSE降低为0.002左右。而误差项取不同的分布对估计的MSE几乎没有显著的影响。

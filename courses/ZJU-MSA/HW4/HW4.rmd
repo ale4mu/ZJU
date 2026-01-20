@@ -1,0 +1,237 @@
+---
+title: "Homework 4"
+author: "张子乐,3230104237"
+output:
+  pdf_document:
+    latex_engine: xelatex
+  html_document:
+    df_print: paged
+header-includes:
+  - \usepackage{ctex}
+---
+```{r setup, message = F, include=FALSE}
+options(htmltools.dir.version = FALSE)
+library(knitr)
+opts_knit$set(eval.after = 'fig.cap')
+library(tidyverse)
+library(reshape2)
+library(ggplot2)
+library(readxl)
+library(dplyr)
+library(readr)
+library(gtsummary)
+library(mice)
+library(Hmisc)
+library(naniar)
+library(corrplot)
+library(ICSNP)  
+library(MVN)
+library(knitr)
+library(biotools)
+library(car)    
+library(MASS)
+library(ROCR)
+library(showtext)
+showtext_auto()
+```
+
+## 处理学习样本
+
+```{r}
+df <- read_excel("肝胆病患者检查数据.xls",skip = 1)
+df <- df[,-1] #去除第一列
+cols <- names(df)
+df <- as.data.frame(lapply(df[cols], as.numeric))
+df$sick <- ifelse(df$group == 5,0,1) # 只有第五组是正常的
+df$sick <- factor(df$sick,levels = c(0, 1),labels = c("Healthy", "Sick")) # 0为正常，1为患病
+df <- df[,-5] # 删除group列
+df1 <- df[df$sick == "Healthy",1:4]
+df2 <- df[df$sick == "Sick",1:4]
+
+# 处理测试样本
+data <- read_excel("体检资料.xls")
+data <- data[,c("体检编号","总胆红素（T-BIL）","白蛋白（Alb）","碱性磷酸酶（ALP）","谷丙转氨酶（ALT）")]
+names(data) <- c("ID", "BIL", "Alb", "ALP", "ALT")
+cols <- names(data[,-1])
+data[-1] <- as.data.frame(lapply(data[cols], as.numeric))
+```
+
+## 检验均值向量是否有显著差异
+
+H0：健康个体和患病个体四个指标的均值向量没有显著差异
+
+H1：健康个体和患病个体四个指标的均值向量有显著差异
+
+结果显示，霍特林统计量$T^2$ = 78.743，$p <0.05$，在95%的置信水平下拒绝原假设，选择备择假设，
+即健康个体和患病个体四个指标的均值向量有显著差异，可以进行判别分析。
+
+```{r}
+test1 <- function(df1,df2)
+{
+  res1 <- HotellingsT2(df1,df2)
+  print(res1)
+  return (res1)
+}
+
+res1 <- test1(df1,df2)
+```
+## 检验组间方差是否有显著差异
+
+```{r,include=FALSE}
+varcomp <- function(covmat,n) {
+   if (is.list(covmat)) {
+    if (length(covmat) < 2)
+        stop("covmat must be a list with at least 2 elements")
+    ps <- as.vector(sapply(covmat,dim))
+    if (sum(ps[1] == ps) != length(ps))
+        stop("all covariance matrices must have the same dimension")
+    p <- ps[1]
+        q <- length(covmat)
+        if (length(n) == 1)
+        Ng <- rep(n,q)
+    else if (length(n) == q)
+        Ng <- n
+    else
+        stop("n must be equal length(covmat) or 1")
+
+    DNAME <- deparse(substitute(covmat))
+   }
+
+   else
+    stop("covmat must be a list")
+  
+   ng <- Ng - 1
+   Ag <- lapply(1:length(covmat),function(i,mat,n) { n[i] * mat[[i]] },mat=covmat,n=ng)
+   A <- matrix(colSums(matrix(unlist(Ag),ncol=p^2,byrow=T)),ncol=p)
+   detAg <- sapply(Ag,det)
+   detA <- det(A)
+   V1 <- prod(detAg^(ng/2))/(detA^(sum(ng)/2))
+   kg <- ng/sum(ng)
+   l1 <- prod((1/kg)^kg)^(p*sum(ng)/2) * V1
+   rho <- 1 - (sum(1/ng) - 1/sum(ng))*(2*p^2+3*p-1)/(6*(p+1)*(q-1))
+   w2 <- p*(p+1) * ((p-1)*(p+2) * (sum(1/ng^2) - 1/(sum(ng)^2)) - 6*(q-1)*(1-rho)^2) / (48*rho^2)
+   f <- 0.5 * (q-1)*p*(p+1)
+   STATISTIC <- -2*rho*log(l1)
+   PVAL <- 1 - (pchisq(STATISTIC,f) + w2*(pchisq(STATISTIC,f+4) - pchisq(STATISTIC,f)))
+   names(STATISTIC) <- "corrected lambda*"
+   names(f) <- "df"
+   RVAL <- structure(list(statistic = STATISTIC, parameter = f,p.value = PVAL, data.name = DNAME, method = "Equality of Covariances Matrices Test"),class="htest")
+   return(RVAL)
+}
+```
+
+H0：两总体的协方差阵相同
+
+H1：两总体的协方差阵不相同
+
+假设检验结果显示，$p < 0.05$，在95%的置信水平下拒绝原假设，选择备择假设，因此认为健康总体和患病总体的协方差阵不同。
+
+```{r}
+test2 <- function(df)
+{
+  # s1 <- cov(df1)
+  # s2 <- cov(df2)
+  # covmat <- list(s1,s2)
+  # res2 <- varcomp(covmat,n=c(nrow(df1),nrow(df2)))
+  res2 <- boxM(df[, c("BIL", "Alb", "ALP", "ALT")],df$sick) # 似然比检验
+  print(res2)
+  return(res2)
+}
+res2 <- test2(df)
+```
+
+## 建立判别函数
+
+```{r}
+test3 <- function(df)
+{
+  res3 <- qda(sick~BIL+Alb+ALP+ALT,df)
+  print(res3)
+  return(res3)
+}
+res3 <- test3(df)
+```
+画出ROC-AUC曲线图：
+
+```{r}
+train_pred <- predict(res3, df[c("BIL", "Alb", "ALP", "ALT")])
+pred_roc <- prediction(train_pred$posterior[, "Sick"], df$sick)
+
+perf <- performance(pred_roc, "tpr", "fpr")
+auc <- performance(pred_roc, "auc")@y.values[[1]]
+
+roc_data <- data.frame(
+  FPR = perf@x.values[[1]],   # 假阳性率
+  TPR = perf@y.values[[1]]    # 真阳性率
+)
+
+p <- ggplot(roc_data, aes(x = FPR, y = TPR)) +
+  geom_line(color = "#007acc", linewidth = 1.2, alpha = 0.9) +  
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red", alpha = 0.7) +
+  labs(
+    title = "ROC 曲线",
+    subtitle = paste("AUC =", round(auc, 3)),
+    x = "假阳性率",
+    y = "真阳性率"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", color = "#222222"),
+    plot.subtitle = element_text(size = 12, face = "italic", color = "#555555"),
+    axis.title = element_text(size = 11),
+    axis.text = element_text(size = 10),
+    panel.grid.major = element_line(color = "black", linewidth = 0.5),
+    panel.grid.minor = element_blank(),
+    legend.position = "none"
+  ) +
+  annotate("text", x = 0.5, y = 0.2, 
+           label = paste("AUC =", round(auc, 3)), 
+           size = 8, color = "#d95f02", fontface = "bold", alpha = 0.8)
+
+print(p)
+```
+ROC曲线靠近左上角，且$AUC = 0.957 > 0.9$，说明判别效果较好。
+
+## 根据判别函数分析体检数据
+
+其中Alb列有一个缺失值，将包含它的行删除。
+
+```{r}
+test_data <- na.omit(data[,c("BIL", "Alb", "ALP", "ALT")])
+res4 <- predict(res3,test_data)
+print(res4$class)
+prop.table(table(res4$class)) # 计算百分比
+```
+
+222份体检数据中，96.4%的个体被判断为健康人，仅3.6%的个体被判断为患有肝胆疾病。
+
+```{r}
+means <- t(res3$means) %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column(var = "Variable") %>%
+  rename(Healthy = Healthy, Sick = Sick)
+
+res <- means |> 
+  mutate(
+    `Healthy` = round(Healthy, 2),
+    `Sick` = round(Sick, 2)
+  ) %>%
+  dplyr::select(Variable, Healthy, Sick)
+
+kable(res, 
+      caption = "两组各指标的均值",
+      col.names = c("变量", "健康组均值", "患者组均值"),
+      align = "c",
+      digits = 2)
+```
+
+## 报告
+
+本次实验利用已有医院病人的资料，根据正常人和患者的四项指标（总胆红素(umol/L)，白蛋白（g/L），碱性磷酸酶，谷丙转氨酶），学习构建了一个判别分析模型，以用于分析未标注是否患病的体检数据。
+
+在构建模型前，对两总体四项指标的均值向量是否有显著差异做假设检验。霍特林T²检验结果显示，健康与患病群体在这些指标的均值上存在显著差异（p < 0.05），因此做判别分析是有意义的。同时，对两总体的协方差矩阵作似然比检验，
+p < 0.05，可以认为两总体的协方差矩阵不相等，因此采用广义平方距离QDA。
+
+对其的效果进行评估：该判别模型具有出色的区分能力，而ROC曲线分析得出的AUC值高达0.957，这表明模型在诊断性能上达到了优秀水平，能够高效且准确地识别两类人群。
+
+最后，将此判别模型应用于一份包含222个体的体检数据。分析结果显示，其中 96.4% 的个体健康，而约 3.6% 的个体被识别为具有肝胆疾病风险。

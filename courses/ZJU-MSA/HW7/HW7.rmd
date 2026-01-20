@@ -1,0 +1,212 @@
+---
+title: "Homework 7"
+author: "张子乐,3230104237"
+output:
+  html_document:
+    df_print: paged
+  pdf_document:
+    latex_engine: xelatex
+header-includes:
+  - \usepackage{ctex}
+---
+```{r setup, message = F, include=FALSE}
+options(htmltools.dir.version = FALSE)
+library(knitr)
+opts_knit$set(eval.after = 'fig.cap')
+library(tidyverse)
+library(reshape2)
+library(ggplot2)
+library(psych)
+library(readxl)
+library(dplyr)
+library(readr)
+library(tibble)
+library(mice)
+library(Hmisc)
+library(car)    
+library(cluster)
+library(ggrepel)
+library(MASS)
+library(showtext)
+showtext_auto()
+```
+
+## 第一题
+
+```{r}
+df <- as.data.frame(read_excel("ex6.7.xls"))
+rownames(df) <- df[[1]]
+df <- df[-1]
+KMO(df)           # KMO 测度检验
+cortest.bartlett(df)  # Bartlett 球形检验
+```
+
+KMO检验考察变量间的相关性和偏相关性，检验结果表明，总$KMO = 0.83$，各个变量的$KMO >= 0.7$，适合做因子分析。
+
+Bartlett’s 球形检验的H0是各变量之间没有相关关系，即不能将多个变量简化为少数的成分，没有进行主成分提取的必要。
+检验结果表明，$p < 0.05$，拒绝原假设，各变量之间有足够的相关性，可以进行因子分析。
+
+```{r}
+pca <- princomp(cor(df))
+screeplot(pca, type = "lines")
+abline(h = 1, col = "red", lty = 2) # 碎石图
+```
+
+根据碎石图和后面的因子分析，选择2个因子。
+
+```{r}
+fre<-factanal(df, 2, scores="Bartlett",rotation = "varimax")
+print(fre)
+```
+卡方检验原假设H0:数据协方差结构可以由 2 个公共因子完全解释。$\chi^2 = 14.64, p = 0.331 > 0.05$，不拒绝原假设，
+因此该因子模型是充分且合理的。
+
+其中，因子1解释了$47.3\%$的总方差，因子2解释了$30\%$的总方差，累计解释方差$77.3\%$，说明有效捕捉了原始变量的信息。
+
+```{r}
+communality <- 1 - fre$uniquenesses
+df_communality <- data.frame(
+  变量 = names(communality),
+  公因子方差 = round(communality, 3)
+)
+print(df_communality)
+```
+多数变量的共同度 > 0.7，“交通通讯”、“家庭服务”、“食品”等接近 0.9,说明它们的信息被两个因子较好地捕捉;
+“衣着”的共同度仅为 0.456，是所有变量中最低的，意味着其不能被这两个因子很好的解释。
+
+```{r}
+loadings_rotated <- loadings(fre)  
+df_loadings <- data.frame(
+  变量 = rownames(loadings_rotated),
+  Factor1 = round(loadings_rotated[, "Factor1"], 3),
+  Factor2 = round(loadings_rotated[, "Factor2"], 3)
+) 
+print(df_loadings)
+```
+根据旋转后的因子载荷矩阵，因子1中食品(0.925)、居住(0.659)、交通通讯(0.941)、教育(0.699)、家庭服务(0.888)因子载荷较高，主要反映居民在生存必需、子女教育、居住条件改善和日常便利服务上的综合投入水平，可命名为基础生活因子；因子2中衣着(0.634)、医疗(0.891)、耐用消费品(0.680)因子载荷较高，教育和居住也有较高的交叉载荷，体现个体对身体健康维护、外在形象管理、耐用资产积累的关注程度，可命名为品质生活因子。
+
+## 第二题
+
+```{r}
+# 先清洗数据，将字符串转为数值类型，删除缺失值
+df2 <- as.data.frame(read_excel("体验数据.xls"))
+df2 <- df2[-1, ] 
+
+Age <- as.numeric(as.character(df2[["Age"]])) 
+selected_vars <- c("Sbp", "Dbp", "Sphygmus", "Weight", "Height", 
+                   "TC", "TG", "ALT", "AST", "T-BIL", "IB", 
+                   "ALP", "TP", "Alb", "GLB")
+df_temp <- df2[, c(selected_vars, "Age"), drop = FALSE]
+for (col in names(df_temp)) {
+  df_temp[[col]] <- as.numeric(as.character(df_temp[[col]]))
+}
+df_clean <- na.omit(df_temp)
+rownames(df_clean) <- NULL
+
+df2 <- df_clean[, selected_vars, drop = FALSE]
+Age <- df_clean[["Age"]]  
+
+# 主成分分析
+pca <- princomp(df2,cor = TRUE)
+print(summary(pca)) #特征根的平方根和方差贡献率
+print(pca$loadings) #因子载荷
+screeplot(pca, type="lines")  # 碎石图
+abline(h = 1, col = "red", lty = 2)  
+```
+由碎石图和累计方差贡献率，选择前六个主成分，累计方差贡献率达到0.75，其中第一主成分的方差贡献率为0.24，第二主成分的方差贡献率为0.15，第三主成分的方差贡献率为0.13。将样本根据主成分得分用k-means聚类方法分为3类，在前两个主成分上的散点图如下图所示。
+
+```{r}
+scores <- pca$scores[, 1:6]
+# 使用 K-means 对样本进行聚类
+set.seed(123)
+k <- 3 
+km <- kmeans(scores, centers = k,  iter.max = 100,nstart = 25)
+
+df_cluster <- data.frame(df2, PC1 = scores[,1], PC2 = scores[,2], cluster = km$cluster)
+
+plot(PC1 ~ PC2, data = df_cluster, col = km$cluster, pch = 16, 
+     main = "K-means")
+text(df_cluster$PC2, df_cluster$PC1, labels = km$cluster, pos = 3, cex = 0.6, col = "gray")
+```
+
+
+```{r}
+# 用主成分分析旋转后的因子载荷矩阵做聚类
+L <- pca$loadings[, 1:6]
+L_rot <- varimax(L)$loadings
+class(L_rot) <- "loadings"
+print(L_rot, cutoff = 0.4)
+```
+用主成分分析旋转后的因子载荷矩阵做聚类，Sbp、Dbp和Sphygmus为一类，TP、Alb和GLB为一类，T-BIL和IB为一类，ALT和AST为一类，Weight和Height为一类，
+TC和TG为一类。
+
+```{r}
+error <- df2$TP - (df2$Alb + df2$GLB) # 发现 TP = Alb + GLB
+max_abs_error <- max(abs(error))
+print(max_abs_error)
+df2 <- df2[, !names(df2) %in% c("TP")]  # 删除TP
+```
+
+```{r}
+KMO(df2)           # KMO 测度检验
+cortest.bartlett(df2)  # Bartlett 球形检验
+```
+KMO检验考察变量间的相关性和偏相关性，检验结果表明，总$KMO = 0.62$，大多数变量的$KMO >= 0.6$，适合做因子分析。
+
+Bartlett’s 球形检验的H0是各变量之间没有相关关系，即不能将多个变量简化为少数的成分，没有进行主成分提取的必要。
+检验结果表明，$p < 0.05$，拒绝原假设，各变量之间有足够的相关性，可以进行因子分析。
+
+```{r}
+fre2<-factanal(df2,5, scores="Bartlett",rotation = "varimax") # 由前面的主成分分析，选择5个因子
+print(fre2)
+```
+其中，因子1解释了$14.5\%$的总方差，因子2解释了$13.3\%$的总方差，因子3解释了$12.7\%$的总方差，5个因子累计解释方差$57.2\%$，说明有效捕捉了原始变量的信息。
+
+```{r}
+communality2 <- 1 - fre2$uniquenesses
+df_communality2 <- data.frame(
+  变量 = names(communality2),
+  公因子方差 = round(communality2, 3)
+)
+print(df_communality2)
+```
+
+多数变量的共同度 > 0.7，“Sbp”、“ALT”、“T-BIL”、“IB”等超过 0.9,说明它们的信息被六个因子较好地捕捉;
+“Sphygmus”的共同度仅为 0.055，是所有变量中最低的，“Alb”、“ALP”、“GLB”、“TC”的共同度也低于0.3，它们不能被这五个因子很好的解释。
+
+```{r}
+loadings_rotated2 <- loadings(fre2)  
+df_loadings2 <- data.frame(
+  变量 = rownames(loadings_rotated2),
+  Factor1 = round(loadings_rotated2[, "Factor1"], 3),
+  Factor2 = round(loadings_rotated2[, "Factor2"], 3),
+  Factor3 = round(loadings_rotated2[, "Factor3"], 3),
+  Factor4 = round(loadings_rotated2[, "Factor4"], 3),
+  Factor5 = round(loadings_rotated2[, "Factor5"], 3)
+) 
+print(df_loadings2)
+```
+
+根据旋转后的因子载荷矩阵，因子1中总胆红素T-BIL(0.990)、间接胆红素IB(0.976)因子载荷较高，反映胆红素生成与肝前/肝内处理能力；因子2中谷丙转氨酶ALT(0.970)、谷草转氨酶AST(0.866)因子载荷较高，它们是经典的肝细胞损伤敏感指标；因子3中舒张压Sbp(0.969)、收缩压Dbp(0.761)因子载荷较高，它们共同构成动脉血压核心指标，反映心脏泵血与外周血管阻力的综合状态；因子4中体重Weight(0.724)、身高Height(0.816)因子载荷较高，它们是基础体格指标，共同决定 BMI；因子5中总胆固醇TC(0.480)、甘油三酯TG(0.668)因子载荷较高，该因子以内源性甘油三酯代谢为主导。
+
+```{r}
+scores <- as.data.frame(fre2$scores)
+names(scores) <- paste0("Factor", 1:5)
+
+factor_names <- c(
+  "胆红素代谢因子",   # Factor1: T-BIL/IB
+  "肝细胞损伤因子",   # Factor2: ALT/AST
+  "动脉血压因子",     # Factor3: Sbp/Dbp
+  "体型规模因子",     # Factor4: Weight/Height
+  "甘油三酯代谢因子"  # Factor5: TG/TC
+)
+
+cor_res <- data.frame(
+  因子 = factor_names,
+  r = sapply(scores, function(x) cor(x, Age, use = "complete.obs")),
+  p = sapply(scores, function(x) cor.test(x, Age)$p.value)
+)
+
+print(cor_res, digits = 3, row.names = FALSE)
+```
+计算各个因子得分与年龄的皮尔逊相关性，结果如上表所示。在95%的置信水平下，除了因子1与年龄的相关性不显著外，其余4个因子均与年龄具有显著的相关性。其中，因子2和因子4与年龄呈负相关关系，相关系数为-0.03和-0.07；因子3和因子5与年龄呈正相关，相关系数为0.32和0.14。

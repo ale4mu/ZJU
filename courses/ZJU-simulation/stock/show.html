@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PPO 供应链策略回放演示</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #f0f4f8, #e8f0fe); margin: 0; padding: 20px; color: #333; min-height: 100vh; }
+
+        .header { text-align: center; margin-bottom: 24px; }
+        .header h1 { font-size: 26px; margin: 0 0 6px; color: #1a237e; }
+        .header p { color: #546e7a; font-size: 14px; margin: 0; }
+
+        /* 进度条 */
+        .progress-bar-wrap { background: #dde; border-radius: 8px; height: 10px; margin: 0 auto 20px; max-width: 700px; overflow: hidden; }
+        .progress-bar-fill { height: 100%; background: linear-gradient(90deg, #42a5f5, #1565c0); transition: width 0.4s; border-radius: 8px; width: 0%; }
+
+        /* 控制栏 */
+        .controls { display: flex; justify-content: center; gap: 14px; margin-bottom: 24px; align-items: center; flex-wrap: wrap; }
+        button { padding: 10px 22px; font-size: 15px; cursor: pointer; border: none; border-radius: 6px; color: white; transition: 0.2s; font-weight: 600; }
+        #btn-prev { background: #78909c; }  #btn-prev:hover { background: #546e7a; }
+        #btn-step { background: #2e7d32; }  #btn-step:hover { background: #1b5e20; }
+        #btn-auto { background: #1565c0; }  #btn-auto:hover { background: #0d47a1; }
+        #btn-reset { background: #c62828; } #btn-reset:hover { background: #b71c1c; }
+        button:disabled { background: #bbb; cursor: default; }
+        .period-label { font-size: 18px; font-weight: 700; color: #1a237e; min-width: 90px; text-align: center; }
+
+        /* 仪表盘 */
+        .dashboard { display: flex; justify-content: center; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+        .kpi-card { background: white; border-radius: 10px; padding: 12px 20px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); min-width: 130px; }
+        .kpi-label { font-size: 12px; color: #78909c; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+        .kpi-val { font-size: 26px; font-weight: 800; margin-top: 4px; }
+        .kpi-demand .kpi-val { color: #e65100; }
+        .kpi-sold   .kpi-val { color: #2e7d32; }
+        .kpi-profit .kpi-val { color: #1565c0; }
+        .kpi-cum    .kpi-val { color: #6a1b9a; }
+        .kpi-shortage .kpi-val { color: #c62828; }
+
+        /* 供应链节点 */
+        .supply-chain { display: flex; justify-content: center; align-items: center; flex-wrap: nowrap; overflow-x: auto; padding: 10px 0 20px; gap: 0; }
+
+        .node { background: white; border: 2.5px solid #42a5f5; border-radius: 12px; padding: 14px 12px; width: 148px; min-width: 148px; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.1); transition: transform 0.2s, box-shadow 0.2s; }
+        .node:hover { transform: translateY(-3px); box-shadow: 0 8px 20px rgba(0,0,0,0.15); }
+        .node h3 { margin: 0 0 10px; color: #1565c0; font-size: 14px; line-height: 1.3; }
+        .stat { margin: 5px 0; font-size: 13px; font-weight: 600; }
+        .inv-val { font-size: 28px; font-weight: 800; color: #2e7d32; display: block; }
+        .inv-val.low  { color: #e65100; }
+        .inv-val.zero { color: #c62828; }
+        .order-badge { display: inline-block; margin-top: 6px; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; background: #e3f2fd; color: #1565c0; }
+        .order-badge.active { background: #fff9c4; color: #f57f17; }
+        .shortage-badge { display: inline-block; margin-top: 6px; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; background: #ffebee; color: #c62828; }
+
+        .customer-node { border-color: #ffa726; background: #fff8e1; }
+        .customer-node h3 { color: #e65100; }
+        .factory-node { border-color: #66bb6a; background: #f1f8e9; }
+        .factory-node h3 { color: #2e7d32; }
+
+        /* 箭头 */
+        .arrow-container { display: flex; flex-direction: column; align-items: center; padding: 0 4px; min-width: 100px; flex-shrink: 0; }
+        .arrow-line { display: flex; align-items: center; width: 100%; }
+        .arrow-body { flex: 1; height: 4px; background: #90a4ae; border-radius: 2px; }
+        .arrow-head { width: 0; height: 0; border-top: 7px solid transparent; border-bottom: 7px solid transparent; border-left: 12px solid #90a4ae; }
+        .shipment-badge { margin-top: 5px; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 700; background: #fce4ec; color: #ad1457; text-align: center; min-width: 60px; }
+        .shipment-badge.active { background: #f3e5f5; color: #6a1b9a; }
+        .lead-label { font-size: 11px; color: #78909c; margin-top: 3px; }
+
+        /* 节点 flash 动画 */
+        .flash-green { animation: fG 0.6s ease; }
+        .flash-red   { animation: fR 0.6s ease; }
+        .flash-order { animation: fO 0.6s ease; }
+        @keyframes fG { 0%,100%{} 30%{ box-shadow: 0 0 0 6px rgba(46,125,50,0.35); border-color:#2e7d32; } }
+        @keyframes fR { 0%,100%{} 30%{ box-shadow: 0 0 0 6px rgba(198,40,40,0.35); border-color:#c62828; } }
+        @keyframes fO { 0%,100%{} 30%{ box-shadow: 0 0 0 6px rgba(245,127,23,0.35); border-color:#f57f17; } }
+
+        /* 利润迷你图 */
+        .chart-section { background: white; border-radius: 10px; padding: 16px 20px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        .chart-title { font-size: 13px; font-weight: 700; color: #546e7a; margin-bottom: 10px; }
+        .bar-chart { display: flex; align-items: flex-end; gap: 4px; height: 80px; }
+        .bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
+        .bar { width: 100%; border-radius: 3px 3px 0 0; transition: height 0.4s; min-height: 2px; }
+        .bar.profit  { background: #42a5f5; }
+        .bar.loss    { background: #ef5350; border-radius: 0 0 3px 3px; align-self: flex-start; }
+        .bar-day { font-size: 9px; color: #aaa; margin-top: 2px; }
+
+        /* 日志 */
+        .log-container { background: white; border-radius: 10px; padding: 14px 16px; height: 140px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 13px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); color: #37474f; }
+        .log-item { padding: 3px 0; border-bottom: 1px solid #f0f0f0; }
+        .log-item.shortage { color: #c62828; }
+        .log-item.full { color: #2e7d32; }
+
+        /* 最终结果横幅 */
+        .result-banner { display: none; text-align: center; margin-top: 16px; background: linear-gradient(135deg, #1a237e, #283593); color: white; border-radius: 12px; padding: 20px; box-shadow: 0 6px 20px rgba(26,35,126,0.35); }
+        .result-banner h2 { margin: 0 0 8px; font-size: 22px; }
+        .result-banner .total { font-size: 36px; font-weight: 900; color: #ffeb3b; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>📊 多级供应链下的 PPO 模型</h1>
+    <p>30 天 · 动作来自训练好的 PPO</p>
+</div>
+
+<!-- 进度条 -->
+<div class="progress-bar-wrap">
+    <div class="progress-bar-fill" id="progress-fill"></div>
+</div>
+
+<!-- 控制栏 -->
+<div class="controls">
+    <button id="btn-prev"  onclick="prevStep()">◀ 上一步</button>
+    <span class="period-label" id="period-label">第 0 / 30 天</span>
+    <button id="btn-step"  onclick="nextStep()">下一步 ▶</button>
+    <button id="btn-auto"  onclick="toggleAuto()">▶▶ 自动播放</button>
+    <button id="btn-reset" onclick="resetEnv()">↺ 重置</button>
+</div>
+
+<!-- KPI 仪表盘 -->
+<div class="dashboard">
+    <div class="kpi-card kpi-demand">
+        <div class="kpi-label">本日需求</div>
+        <div class="kpi-val" id="kpi-demand">—</div>
+    </div>
+    <div class="kpi-card kpi-sold">
+        <div class="kpi-label">实际销量</div>
+        <div class="kpi-val" id="kpi-sold">—</div>
+    </div>
+    <div class="kpi-card kpi-shortage">
+        <div class="kpi-label">缺货量</div>
+        <div class="kpi-val" id="kpi-shortage">—</div>
+    </div>
+    <div class="kpi-card kpi-profit">
+        <div class="kpi-label">本日利润</div>
+        <div class="kpi-val" id="kpi-profit">—</div>
+    </div>
+    <div class="kpi-card kpi-cum">
+        <div class="kpi-label">累计利润</div>
+        <div class="kpi-val" id="kpi-cum">0</div>
+    </div>
+</div>
+
+<!-- 供应链节点图 -->
+<div class="supply-chain">
+
+    <!-- 工厂 -->
+    <div class="node factory-node" id="node-factory">
+        <h3>🏭 工厂<br>(Stage3)</h3>
+        <div class="stat">库存: <span class="inv-val">∞</span></div>
+        <div class="stat" style="font-size:12px;color:#78909c;">无限原材料</div>
+        <span class="order-badge" id="order-D">D 订单: —</span>
+    </div>
+
+    <div class="arrow-container">
+        <div class="arrow-line"><div class="arrow-body"></div><div class="arrow-head"></div></div>
+        <div class="shipment-badge" id="ship-D">发货: —</div>
+        <div class="lead-label">→ 分销商</div>
+    </div>
+
+    <!-- 分销商 -->
+    <div class="node" id="node-dist">
+        <h3>🏢 分销商<br>(Stage2)</h3>
+        <div class="stat">库存: <span class="inv-val" id="inv-2">—</span></div>
+        <span class="order-badge" id="order-W">W 订单: —</span>
+    </div>
+
+    <div class="arrow-container">
+        <div class="arrow-line"><div class="arrow-body"></div><div class="arrow-head"></div></div>
+        <div class="shipment-badge" id="ship-W">发货: —</div>
+        <div class="lead-label">→ 批发商</div>
+    </div>
+
+    <!-- 批发商 -->
+    <div class="node" id="node-whole">
+        <h3>📦 批发商<br>(Stage1)</h3>
+        <div class="stat">库存: <span class="inv-val" id="inv-1">—</span></div>
+        <span class="order-badge" id="order-R">R 订单: —</span>
+    </div>
+
+    <div class="arrow-container">
+        <div class="arrow-line"><div class="arrow-body"></div><div class="arrow-head"></div></div>
+        <div class="shipment-badge" id="ship-R">发货: —</div>
+        <div class="lead-label">→ 零售商</div>
+    </div>
+
+    <!-- 零售商 -->
+    <div class="node" id="node-retail">
+        <h3>🏪 零售商<br>(Stage0)</h3>
+        <div class="stat">库存: <span class="inv-val" id="inv-0">—</span></div>
+        <span class="shortage-badge" id="shortage-badge" style="display:none;">缺货: <span id="shortage-val">0</span></span>
+    </div>
+
+    <div class="arrow-container">
+        <div class="arrow-line"><div class="arrow-body"></div><div class="arrow-head"></div></div>
+        <div class="shipment-badge active" id="ship-sell">销售: —</div>
+        <div class="lead-label">→ 客户</div>
+    </div>
+
+    <!-- 客户 -->
+    <div class="node customer-node" id="node-customer">
+        <h3>🛒 客户<br></h3>
+        <div class="stat">需求: <span class="inv-val" id="cust-demand" style="color:#e65100;">—</span></div>
+    </div>
+
+</div>
+
+<!-- 利润迷你柱状图 -->
+<div class="chart-section">
+    <div class="chart-title">📈 每日利润走势（蓝色=盈利 / 红色=亏损）</div>
+    <div class="bar-chart" id="bar-chart"></div>
+</div>
+
+<!-- 日志 -->
+<div class="log-container" id="log-box">
+    <div class="log-item">系统就绪，点击「下一步」开始 PPO 演示。</div>
+</div>
+
+<!-- 最终结果 -->
+<div class="result-banner" id="result-banner">
+    <h2>🎉 30 天模拟完成</h2>
+    <div>总折现利润</div>
+    <div class="total" id="final-total">434.81</div>
+</div>
+
+<script>
+// ==================== 回放数据（来自 result.txt）====================
+const REPLAY = [
+  {day:1,  demand:24, sold:24, action:[4,19,0],  inv:[76,96,181],  profit:17.95},
+  {day:2,  demand:24, sold:24, action:[13,18,0], inv:[52,83,163],  profit:23.04},
+  {day:3,  demand:18, sold:18, action:[21,19,0], inv:[34,62,144],  profit:16.47},
+  {day:4,  demand:28, sold:28, action:[25,23,0], inv:[10,37,121],  profit:40.84},
+  {day:5,  demand:15, sold:15, action:[19,25,0], inv:[8,18,96],    profit:19.65},
+  {day:6,  demand:28, sold:28, action:[16,25,0], inv:[1,21,71],    profit:43.11},
+  {day:7,  demand:21, sold:21, action:[17,24,0], inv:[5,22,47],    profit:30.57},
+  {day:8,  demand:19, sold:19, action:[20,21,0], inv:[5,21,26],    profit:27.35},
+  {day:9,  demand:18, sold:18, action:[20,16,0], inv:[3,24,10],    profit:25.59},
+  {day:10, demand:20, sold:20, action:[23,13,0], inv:[0,26,0],     profit:28.32},
+  {day:11, demand:18, sold:18, action:[26,0,0],  inv:[2,25,0],     profit:24.37},
+  {day:12, demand:15, sold:15, action:[25,0,0],  inv:[7,24,0],     profit:18.88},
+  {day:13, demand:21, sold:21, action:[24,0,0],  inv:[9,21,0],     profit:26.64},
+  {day:14, demand:21, sold:21, action:[22,0,0],  inv:[14,16,0],    profit:25.63},
+  {day:15, demand:26, sold:26, action:[17,0,0],  inv:[13,10,0],    profit:31.83},
+  {day:16, demand:19, sold:19, action:[7,0,0],   inv:[18,1,0],     profit:22.20},
+  {day:17, demand:27, sold:27, action:[4,0,0],   inv:[12,0,0],     profit:31.83},
+  {day:18, demand:23, sold:23, action:[0,0,0],   inv:[5,0,0],      profit:26.74},
+  {day:19, demand:14, sold:14, action:[0,0,0],   inv:[0,0,0],      profit:15.97},
+  {day:20, demand:22, sold:1,  action:[0,0,0],   inv:[0,0,0],      profit:-0.27},
+  {day:21, demand:19, sold:0,  action:[0,0,0],   inv:[0,0,0],      profit:-2.38},
+  {day:22, demand:19, sold:0,  action:[0,0,0],   inv:[0,0,0],      profit:-3.31},
+  {day:23, demand:19, sold:0,  action:[0,0,0],   inv:[0,0,0],      profit:-4.18},
+  {day:24, demand:21, sold:0,  action:[0,0,0],   inv:[0,0,0],      profit:-5.10},
+  {day:25, demand:21, sold:0,  action:[0,0,0],   inv:[0,0,0],      profit:-5.96},
+  {day:26, demand:21, sold:0,  action:[0,0,0],   inv:[0,0,0],      profit:-6.76},
+  {day:27, demand:23, sold:0,  action:[0,0,0],   inv:[0,0,0],      profit:-7.60},
+  {day:28, demand:20, sold:0,  action:[0,0,0],   inv:[0,0,0],      profit:-8.25},
+  {day:29, demand:20, sold:0,  action:[0,0,0],   inv:[0,0,0],      profit:-8.85},
+  {day:30, demand:22, sold:0,  action:[0,0,0],   inv:[0,0,0],      profit:-9.50},
+];
+const TOTAL_DAYS = REPLAY.length;
+const FINAL_PROFIT = 434.81;
+
+// ==================== 状态 ====================
+let period = 0;           // 已展示到第 period 天 (0=初始)
+let cumProfit = 0;
+let autoTimer = null;
+const profitHistory = []; // 已展示各天利润
+
+// ==================== 初始化柱状图占位 ====================
+(function initChart(){
+    const chart = document.getElementById('bar-chart');
+    for(let i = 0; i < TOTAL_DAYS; i++){
+        const wrap = document.createElement('div');
+        wrap.className = 'bar-wrap';
+        wrap.innerHTML = `<div class="bar" id="bar-${i}" style="height:2px;background:#e0e0e0;"></div>
+                          <div class="bar-day">${i+1}</div>`;
+        chart.appendChild(wrap);
+    }
+})();
+
+// ==================== 渲染某一天 ====================
+function renderDay(d) {
+    const r = REPLAY[d - 1];
+    const [R, W, D] = r.action;   // R=零售商订, W=批发商订, D=分销商订
+    const [i0, i1, i2] = r.inv;   // 零售商, 批发商, 分销商 期末库存
+    const shortage = r.demand - r.sold;
+
+    // KPI
+    document.getElementById('kpi-demand').innerText  = r.demand;
+    document.getElementById('kpi-sold').innerText    = r.sold;
+    document.getElementById('kpi-shortage').innerText = shortage > 0 ? shortage : 0;
+    document.getElementById('kpi-profit').innerText  = (r.profit >= 0 ? '+' : '') + r.profit.toFixed(2);
+    document.getElementById('kpi-profit').style.color = r.profit >= 0 ? '#1565c0' : '#c62828';
+    document.getElementById('kpi-cum').innerText     = cumProfit.toFixed(2);
+    document.getElementById('kpi-cum').style.color   = cumProfit >= 0 ? '#6a1b9a' : '#c62828';
+
+    // 进度条
+    document.getElementById('progress-fill').style.width = (d / TOTAL_DAYS * 100) + '%';
+    document.getElementById('period-label').innerText = `第 ${d} / ${TOTAL_DAYS} 天`;
+
+    // 库存显示（带颜色）
+    function setInv(id, val) {
+        const el = document.getElementById(id);
+        el.innerText = val;
+        el.className = 'inv-val' + (val === 0 ? ' zero' : val < 10 ? ' low' : '');
+    }
+    setInv('inv-0', i0);
+    setInv('inv-1', i1);
+    setInv('inv-2', i2);
+
+    // 客户需求
+    document.getElementById('cust-demand').innerText = r.demand;
+
+    // 订单徽章
+    document.getElementById('order-R').innerText = `R 订单: ${R}`;
+    document.getElementById('order-R').className = 'order-badge' + (R > 0 ? ' active' : '');
+    document.getElementById('order-W').innerText = `W 订单: ${W}`;
+    document.getElementById('order-W').className = 'order-badge' + (W > 0 ? ' active' : '');
+    document.getElementById('order-D').innerText = `D 订单: ${D}`;
+    document.getElementById('order-D').className = 'order-badge' + (D > 0 ? ' active' : '');
+
+    // 发货量（简化展示：订单即为本期发货）
+    document.getElementById('ship-R').innerText = `发货→零: ${R}`;
+    document.getElementById('ship-R').className = 'shipment-badge' + (R > 0 ? ' active' : '');
+    document.getElementById('ship-W').innerText = `发货→批: ${W}`;
+    document.getElementById('ship-W').className = 'shipment-badge' + (W > 0 ? ' active' : '');
+    document.getElementById('ship-D').innerText = `发货→分: ${D}`;
+    document.getElementById('ship-D').className = 'shipment-badge' + (D > 0 ? ' active' : '');
+    document.getElementById('ship-sell').innerText = `销售: ${r.sold}`;
+
+    // 缺货标记
+    if (shortage > 0) {
+        document.getElementById('shortage-badge').style.display = 'inline-block';
+        document.getElementById('shortage-val').innerText = shortage;
+    } else {
+        document.getElementById('shortage-badge').style.display = 'none';
+    }
+
+    // 节点动画
+    flash('node-customer', 'flash-green');
+    if (i0 === 0 || shortage > 0) flash('node-retail', 'flash-red'); else flash('node-retail', 'flash-green');
+    if (i1 === 0) flash('node-whole', 'flash-red'); else if (R > 0) flash('node-whole', 'flash-order');
+    if (i2 === 0) flash('node-dist',  'flash-red'); else if (W > 0) flash('node-dist',  'flash-order');
+    if (D > 0)    flash('node-factory','flash-green');
+
+    // 更新柱状图
+    updateBar(d - 1, r.profit);
+
+    // 日志
+    addLog(r);
+}
+
+function flash(id, cls) {
+    const el = document.getElementById(id);
+    el.classList.remove('flash-green','flash-red','flash-order');
+    void el.offsetWidth; // reflow
+    el.classList.add(cls);
+    setTimeout(() => el.classList.remove(cls), 700);
+}
+
+function updateBar(idx, profit) {
+    const bar = document.getElementById(`bar-${idx}`);
+    // 最大绝对值用于归一化
+    const maxAbs = Math.max(...REPLAY.map(r => Math.abs(r.profit)), 1);
+    const h = Math.max(Math.abs(profit) / maxAbs * 72, 3);
+    bar.style.height = h + 'px';
+    bar.className = 'bar ' + (profit >= 0 ? 'profit' : 'loss');
+}
+
+function addLog(r) {
+    const box = document.getElementById('log-box');
+    const shortage = r.demand - r.sold;
+    const cls = shortage > 0 ? 'shortage' : 'full';
+    const msg = `[第${r.day}天] 需求:${r.demand} 销量:${r.sold}${shortage>0?' ⚠️缺货'+shortage:''} | 动作[R=${r.action[0]} W=${r.action[1]} D=${r.action[2]}] | 库存[零:${r.inv[0]} 批:${r.inv[1]} 分:${r.inv[2]}] | 利润:${r.profit>=0?'+':''}${r.profit.toFixed(2)} 累计:${cumProfit.toFixed(2)}`;
+    const div = document.createElement('div');
+    div.className = `log-item ${cls}`;
+    div.innerText = msg;
+    box.insertBefore(div, box.firstChild);
+}
+
+// ==================== 控制函数 ====================
+function nextStep() {
+    if (period >= TOTAL_DAYS) return;
+    period++;
+    cumProfit += REPLAY[period - 1].profit;
+    renderDay(period);
+    updateButtons();
+    if (period === TOTAL_DAYS) showResult();
+}
+
+function prevStep() {
+    if (period <= 0) return;
+    // 回退：重算累计利润
+    cumProfit -= REPLAY[period - 1].profit;
+    period--;
+    if (period === 0) {
+        resetDisplay();
+    } else {
+        // 重新渲染上一天（cumProfit 已正确）
+        renderDay(period);
+    }
+    updateButtons();
+    document.getElementById('result-banner').style.display = 'none';
+}
+
+let autoRunning = false;
+function toggleAuto() {
+    if (autoRunning) {
+        clearInterval(autoTimer);
+        autoRunning = false;
+        document.getElementById('btn-auto').innerText = '▶▶ 自动播放';
+    } else {
+        if (period >= TOTAL_DAYS) return;
+        autoRunning = true;
+        document.getElementById('btn-auto').innerText = '⏸ 暂停';
+        autoTimer = setInterval(() => {
+            nextStep();
+            if (period >= TOTAL_DAYS) {
+                clearInterval(autoTimer);
+                autoRunning = false;
+                document.getElementById('btn-auto').innerText = '▶▶ 自动播放';
+            }
+        }, 800);
+    }
+}
+
+function resetEnv() {
+    if (autoRunning) { clearInterval(autoTimer); autoRunning = false; }
+    period = 0;
+    cumProfit = 0;
+    resetDisplay();
+    updateButtons();
+    document.getElementById('result-banner').style.display = 'none';
+    document.getElementById('btn-auto').innerText = '▶▶ 自动播放';
+    // 重置柱状图
+    for (let i = 0; i < TOTAL_DAYS; i++) {
+        const bar = document.getElementById(`bar-${i}`);
+        bar.style.height = '2px';
+        bar.style.background = '#e0e0e0';
+        bar.className = 'bar';
+    }
+    const box = document.getElementById('log-box');
+    box.innerHTML = '<div class="log-item">系统已重置，点击「下一步」开始 PPO 策略回放。</div>';
+}
+
+function resetDisplay() {
+    ['inv-0','inv-1','inv-2'].forEach(id => {
+        const el = document.getElementById(id);
+        el.innerText = '—'; el.className = 'inv-val';
+    });
+    document.getElementById('cust-demand').innerText = '—';
+    ['kpi-demand','kpi-sold','kpi-shortage','kpi-profit'].forEach(id => document.getElementById(id).innerText = '—');
+    document.getElementById('kpi-cum').innerText = '0';
+    document.getElementById('kpi-cum').style.color = '#6a1b9a';
+    document.getElementById('period-label').innerText = `第 0 / ${TOTAL_DAYS} 天`;
+    document.getElementById('progress-fill').style.width = '0%';
+    ['order-R','order-W','order-D'].forEach(id => { const e=document.getElementById(id); e.className='order-badge'; e.innerText=e.id.includes('R')?'R 订单: —':e.id.includes('W')?'W 订单: —':'D 订单: —'; });
+    ['ship-R','ship-W','ship-D'].forEach(id => { document.getElementById(id).innerText = '发货: —'; document.getElementById(id).className='shipment-badge'; });
+    document.getElementById('ship-sell').innerText = '销售: —';
+    document.getElementById('shortage-badge').style.display = 'none';
+}
+
+function updateButtons() {
+    document.getElementById('btn-prev').disabled = period <= 0;
+    document.getElementById('btn-step').disabled = period >= TOTAL_DAYS;
+    document.getElementById('btn-auto').disabled = period >= TOTAL_DAYS;
+}
+
+function showResult() {
+    const banner = document.getElementById('result-banner');
+    document.getElementById('final-total').innerText = FINAL_PROFIT.toFixed(2);
+    banner.style.display = 'block';
+    banner.scrollIntoView({ behavior: 'smooth' });
+}
+
+// 初始化
+resetDisplay();
+updateButtons();
+</script>
+</body>
+</html>

@@ -1,0 +1,100 @@
+---
+title: "Homework 2"
+author: "张子乐,3230104237"
+output:
+  pdf_document:
+    latex_engine: xelatex
+  html_document:
+    df_print: paged
+header-includes:
+  - \usepackage[fontset=fandol]{ctex}
+  - \usepackage{float}
+---
+```{r setup, message = F, include=FALSE}
+Sys.setenv(FONTCONFIG_PATH = "C:/Users/admin/AppData/Roaming/TinyTeX/tlpkg/tlpostcode/xetex/conf")
+options(htmltools.dir.version = FALSE)
+knitr::opts_chunk$set(dev = "cairo_pdf")
+library(ggplot2)
+library(gridExtra)
+```
+
+## 要求：构造两个线性同余发生器，从以下两个方面评估它们：1. 其生成的序列能否通过均匀分布的假设检验 2. 可视化序列相邻元素的依赖性
+
+```{r}
+# 线性同余发生器
+LCG <- function(n, seed, a, c, m)
+{
+  x <- numeric(n)
+  u <- numeric(n)
+  x[1] <- seed
+  for (i in 2:n)
+  {
+    x[i] <- (a * x[i-1] + c) %% m
+  }
+  u <- x / m
+  return(u)
+}
+u1 <- LCG(1000, 12345, 1664525, 1013904223, 2^32) # 序列1
+u2 <- LCG(1000, 123, 401, 101, 1024) # 序列2
+head(u1) # 打印序列1的前6个数
+```
+
+```{r}
+head(u2) # 同样打印序列2的前6个数
+```
+
+#### 分别使用卡方检验和KS检验来评价这两个序列的均匀性。原假设为序列服从均匀分布$U(0,1)$，备择假设为序列不服从均匀分布。
+
+```{r}
+# 卡方检验
+k <- 30  # 分为30个区间
+
+# 序列1
+obs1 <- table(cut(u1, breaks = seq(0, 1, length.out = k + 1), include.lowest = TRUE))
+chisq1 <- chisq.test(obs1)
+cat("序列1：卡方统计量 =", chisq1$statistic, ", p值 =", chisq1$p.value, "\n\n")
+
+# 序列2
+obs2 <- table(cut(u2, breaks = seq(0, 1, length.out = k + 1), include.lowest = TRUE))
+chisq2 <- chisq.test(obs2)
+cat("序列2：卡方统计量 =", chisq2$statistic, ", p值 =", chisq2$p.value, "\n")
+```
+
+#### 若取置信水平为0.95，序列1的卡方统计量为21.44，p值为0.84，应接受原假设；序列2的卡方统计量为0.98，p值为1。由此可见，序列1具有较好的均匀性；而序列2的p值为1，相邻元素存在极强的线性依赖，模数m取得相对较小，分布极端均匀。作为伪随机数序列，过度规律也应该被视为不合格，这也是为什么教材中提出使用"two-sided tests"的原因。
+
+
+```{r}
+# KS检验
+ks1 <- ks.test(u1, "punif", 0, 1)
+cat("序列1：D统计量 =", ks1$statistic, ", p值 =", ks1$p.value, "\n\n")
+
+ks2 <- ks.test(u2, "punif", 0, 1)
+cat("序列2：D统计量 =", ks2$statistic, ", p值 =", ks2$p.value, "\n")
+```
+
+#### 同样取置信水平为0.95，序列1的D统计量为0.03，p值为0.38，应接受原假设；序列2的D统计量为0.006，p值为1。结果同样为序列1具有较好的均匀性而序列2具有过度规律的问题。
+
+
+#### 可视化序列相邻元素的依赖性，即画出(u[i], u[i+1])的散点图：
+```{r, fig.width=5, fig.height=4.5, fig.align='center'}
+df1 <- data.frame(x = u1[-length(u1)], y = u1[-1])
+df2 <- data.frame(x = u2[-length(u2)], y = u2[-1])
+
+p1 <- ggplot(df1, aes(x, y)) +
+  geom_point(color = "steelblue", size = 1.5, alpha = 0.7) +
+  labs(x = expression(u[i]), y = expression(u[i+1])) +
+  xlim(0, 1) + ylim(0, 1) +
+  theme_minimal(base_size = 12)
+p1
+```
+
+```{r, fig.width=5, fig.height=4.5, fig.align='center'}
+p2 <- ggplot(df2, aes(x, y)) +
+  geom_point(color = "tomato", size = 1.5, alpha = 0.7) +
+  labs(x = expression(u[i]), y = expression(u[i+1])) +
+  xlim(0, 1) + ylim(0, 1) +
+  theme_minimal(base_size = 12)
+p2
+```
+
+#### 如图所示，序列1的散点图较为均匀，说明相邻元素之间没有明显的依赖关系，产生的伪随机序列独立性较好；而序列2的散点图呈现出明显的线性关系，说明相邻元素之间存在较强的依赖性。

@@ -1,0 +1,325 @@
+---
+title: "Homework 4"
+author: "张子乐,3230104237"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    latex_engine: xelatex
+header-includes:
+  - \usepackage[fontset=fandol]{ctex}
+  - \usepackage{float}
+---
+```{r setup, message = F, include=FALSE}
+Sys.setenv(FONTCONFIG_PATH = "C:/Users/admin/AppData/Roaming/TinyTeX/tlpkg/tlpostcode/xetex/conf")
+options(htmltools.dir.version = FALSE)
+knitr::opts_chunk$set(dev = "cairo_pdf")
+library(ggplot2)
+library(mvtnorm)
+knitr::opts_chunk$set(
+  dev = "cairo_pdf",
+  comment = "",        # 全局去掉 ## 前缀
+  collapse = TRUE,     # 全局合并代码和输出框
+  message = FALSE,     # 全局屏蔽包加载信息
+  warning = FALSE,     # 全局屏蔽警告
+  fig.align = "center" # 全局让所有图片居中
+)
+```
+
+## 1. 作业题目
+
+设独立的观测样本 $Y_j$ 服从参数为 $K$ 和 $\eta$ 的贝塔—二项分布。
+根据贝叶斯统计的做法，假设参数($K$, $\eta$)也是随机变量且服从如下的“无信息”先验分布密度：
+$$
+\pi(K, \eta) \propto \frac{1}{(1 + K)^2} \frac{1}{\eta(1 - \eta)},
+$$
+要求计算 $E(\log K|\boldsymbol{Y})$ 的值。
+
+## 2. 算法设计
+
+由于后验密度难以直接抽样，使用标准化的重要抽样法，分以下步骤进行：
+
+1. 为了消除未知参数 $K > 0$ 和 $0 < \eta < 1$ 的取值限制，作变换 $\alpha = \log K$ 和 $\beta = \log \frac{\eta}{1-\eta}$，则 $\alpha, \beta \in (-\infty, \infty)$。$\alpha, \beta$ 对应的后验密度为：
+$$
+p(\alpha, \beta | \boldsymbol{Y}) \propto \frac{e^\alpha}{(1 + e^\alpha)^2} \prod_{j=1}^n \frac{B\left(\frac{e^\alpha}{1 + e^{-\beta}} + y_j, \frac{e^\alpha}{1 + e^\beta} + n_j - y_j\right)}{B\left(\frac{e^\alpha}{1 + e^{-\beta}}, \frac{e^\alpha}{1 + e^\beta}\right)}.
+$$
+
+2. 选用 **$t(4)$** 分布作为试抽样分布，生成试抽样样本 $(\alpha_i, \beta_i)$。
+
+3. 据此估计 $E(\log K|\boldsymbol{Y})$ 为：
+$$
+\hat{\alpha} = \frac{\sum_{i=1}^N \alpha_i \frac{p(\alpha_i, \beta_i | \boldsymbol{Y})}{g(\alpha_i)g(\beta_i)}}{\sum_{i=1}^N \frac{p(\alpha_i, \beta_i | \boldsymbol{Y})}{g(\alpha_i)g(\beta_i)}}.
+$$
+
+## 3. 样本生成的R函数实现
+
+### 3.1 beta-binomial 分布的概率质量函数
+
+先定义 beta-binomial 分布的概率质量函数。其中 $n$ 是正整数，$y$ 是非负整数且 $0 \le y \le n$。
+
+```{r}
+dbetabin <- function(y, n, K, eta)
+{
+  choose(n, y)*beta(K*eta + y, K*(1-eta) + n-y)/beta(K*eta, K*(1-eta))
+}
+```
+
+### 3.2 以 $\alpha$， $\beta$ 为自变量的后验密度函数
+
+定义以 $\alpha$， $\beta$ 为自变量的后验密度函数（差一个未知的常数倍）。
+书上给出的原代码将浮点数连续相乘可能导致数值下溢，因此改用对数形式计算。
+
+```{r}
+# 书上的原代码，n取20时能正常使用，但n取30时估计值就已经是NaN了。
+# p.post <- function(a, b)
+# {
+#   K <- exp(a)
+#   eta <- 1/(1 + exp(-b))
+#   val <- K / (1+K)^2
+#   beta0 <- beta(K*eta, K*(1-eta))
+#   for(j in seq(n)){
+#   val <- val * beta(K*eta + yarr[j], K*(1-eta) + narr[j] - yarr[j]) / beta0
+#   }
+#   val[beta0==0] <- 0
+#   val
+# }
+```
+
+```{r}
+# 对数形式的代码
+log.p.post <- function(a, b) 
+{
+  K <- exp(a)
+  eta <- 1 / (1 + exp(-b))
+  log_val <- log(K) - 2 * log(1 + K) 
+  log_beta0 <- lbeta(K * eta, K * (1 - eta))
+  # 对数尺度上，累乘变为累加
+  for(j in seq(n)){
+    log_val <- log_val + lbeta(K * eta + yarr[j], K * (1 - eta) + narr[j] - yarr[j]) - log_beta0
+  }
+  return(log_val)
+}
+```
+
+### 3.3 生成观测样本
+
+用模拟方法生成观测样本，先生成小批量的样本（n = 20）。
+
+```{r,results='hide'}
+set.seed(6)
+K.true <- 10
+eta.true <- 0.5
+narr <- sample(20:50, size=20,replace=TRUE)
+n <- length(narr)
+yarr <- numeric(n)
+for(j in seq(n))
+{
+  parr <- dbetabin(seq(0, narr[j]), narr[j], K.true, eta.true)
+  yarr[j] <- sample(seq(0, narr[j]), size=1, prob=parr, replace=TRUE)
+}
+rbind(narr, yarr)
+```
+
+## 4. 重要抽样法的R函数实现
+
+### 4.1 抽样与估计
+
+下面用标准化的重要抽样法估计 $E(\log K|\boldsymbol{Y}) = E(\alpha | \boldsymbol{Y})$。
+取 $\alpha$ 和 $\beta$ 的试抽样分布为 $t(4)$。为了保持数值的稳定性，权重的计算在对数尺度下进行。
+
+```{r}
+set.seed(6)
+N <- 10000
+df.t <- 4
+alpha.samp <- rt(N, df.t) 
+beta.samp <- rt(N, df.t) 
+# 在对数尺度上计算
+log_wei <- numeric(N)
+for (i in seq_len(N)) {
+  # log(权重) = log(后验) - log(提议分布)
+  log_wei[i] <- log.p.post(alpha.samp[i], beta.samp[i]) 
+                - dt(alpha.samp[i], df.t, log=TRUE) 
+                - dt(beta.samp[i], df.t, log=TRUE)
+}
+wei1 <- exp(log_wei - max(log_wei))
+wei <- wei1 / sum(wei1) # 归一化
+est <- sum(alpha.samp*wei) / sum(wei) # 重要抽样法的估计值
+cat("重要抽样法的估计值：", round(est, 4), "\n")
+cat("log K 的真实值：", round(log(K.true), 4), "\n")
+```
+
+**估计结果**：
+用 10000 个抽样的重要抽样法给出的 $\log K$ 的后验估计值为 `r round(est, 4)`，$\log K$ 的真实值为 `r round(log(K.true), 4)`。
+可以发现重要抽样法的估计值与真实值有一定差距，可能是因为仅生成了20组观测数据（narr 和 yarr），观测样本量过小。
+
+### 4.2 诊断
+
+下面给出归一化权重的分布情况。重要性权重最好取值比较均匀，否则重要性权重很小的抽样点基本不起作用，效率较低。
+
+```{r}
+wei <- wei / sum(wei) * N
+summary(wei)
+```
+
+```{r, fig.align='center', fig.width=5, fig.height=4, out.width='70%'}
+boxplot(wei) # 重要性权重的箱线图。可以看出绝大多数点权重较小。
+```
+
+下面定义**有效样本量**（Effective Sample Size, ESS）来衡量重要抽样的效率。
+$$
+ESS = \frac{\left(\sum_{i=1}^{n} w_i\right)^2}{\sum_{i=1}^{n} w_i^2}
+$$
+标准重要抽样法的有效样本量远小于抽样总数10000，效率较低。
+```{r}
+# 计算有效样本量
+ESS <- function(w)
+{
+  return (sum(w)^2 / sum(w^2))
+}
+```
+
+```{r}
+cat("标准重要抽样法的有效样本量：", round(ESS(wei), 2), "\n")
+```
+
+## 5. 带舍选控制的重要抽样法的R函数实现
+
+舍选控制是解决“绝大多数抽样点都贡献很小”问题的一种技术。根据权重的分位点，取舍选控制阈值c为90%分位数。
+对 $N$ 个权重，超过阈值的都保留；小于阈值的，以概率 $W_i/c$ 保留，$c$ 是阈值，其它的丢弃，这样减少了样本量。
+
+```{r}
+quantile(wei, c(0.5, 0.75, 0.8, 0.85, 0.9, 0.95, 0.99)) # 权重的分位数
+```
+
+```{r}
+wei.cut <- unname(quantile(wei, 0.90)) # 取舍选控制阈值c为90%位数
+```
+
+```{r}
+sele <- wei < wei.cut
+n.sele <- sum(sele)
+i.over <- seq(N)[!sele] # 超过阈值的下标，保留
+i.under <- seq(N)[sele] # 低于阈值的下标，按概率保留
+i.accept <- i.under[runif(n.sele) < wei[sele] / wei.cut] # 选出按概率保留部分
+i.keep <- c(i.over, i.accept)
+N1 <- length(i.keep) # 保留的样本量
+N1
+```
+
+原来的 10000 个抽样仅保留了 1000 多个。打印出新权重的分布情况并绘制箱线图，可以明显发现较小的权重被截断了。
+而有效样本量并没有发生明显的变化，说明舍弃的较小权重对估计的贡献较小。
+
+```{r}
+wei.new <- pmax(wei[i.keep], wei.cut) # 舍选控制后权重的分布情况
+summary(wei.new)
+```
+
+```{r, fig.align='center', fig.width=5, fig.height=4, out.width='70%'}
+boxplot(wei.new) # 新权重的箱线图
+```
+
+```{r}
+cat("舍选控制后有效样本量：", round(ESS(wei.new), 2), "\n")
+```
+
+```{r}
+est.new <- sum(alpha.samp[i.keep]*wei.new)/sum(wei.new) # 新的估计值
+cat("带舍选控制的重要抽样法的估计值：", round(est.new, 4), "\n")
+```
+
+**小结**：标准的重要抽样法和带舍选控制的重要抽样法的估计较为接近，说明算法并未出错。下面尝试增加观测样本量到500，重新生成数据并进行重要抽样估计。
+
+## 6. 增大观测样本量后的重要抽样估计
+
+代码与之前一致，只是将观测样本量从20增加到500，并将抽样次数增加到50000。
+此时的估计值与真实值更加接近了，但权重分布并不均匀，且权重都非常小，有效样本量也骤降。
+
+```{r}
+narr <- sample(20:50, size = 500, replace = TRUE)
+n <- length(narr)
+yarr <- numeric(n)
+for(j in seq(n)) {
+  parr <- dbetabin(seq(0, narr[j]), narr[j], K.true, eta.true)
+  yarr[j] <- sample(seq(0, narr[j]), size=1, prob=parr, replace=TRUE)
+}
+N <- 50000 
+alpha.samp <- rt(N, df.t) 
+beta.samp <- rt(N, df.t)
+log_wei <- numeric(N)
+for (i in seq_len(N)) {
+  log_wei[i] <- log.p.post(alpha.samp[i], beta.samp[i]) - 
+                dt(alpha.samp[i], df.t, log=TRUE) - 
+                dt(beta.samp[i], df.t, log=TRUE)
+}
+wei2 <- exp(log_wei - max(log_wei))
+wei.more <- wei2 / sum(wei2)
+est.more <- sum(alpha.samp * wei.more) # 增大观测样本量后的估计值
+```
+
+```{r}
+cat("增大观测样本量后的估计值：", round(est.more, 4), "\n")
+```
+
+```{r, fig.align='center', fig.width=5, fig.height=4, out.width='70%'}
+summary(wei.more) # 权重的分布情况
+boxplot(wei.more) # 权重的箱线图
+cat("增大观测样本量后的有效样本量：", round(ESS(wei.more), 2), "\n")
+```
+
+**总结:**
+
+t(4)分布大多数抽样点都会落在0附近，而 $\alpha$ 的真实值在 2.3 附近，导致几乎所有的点权重都较小。
+增大观测样本量后，权重的最大值为`r max(wei.more)`，99%分位数为`r quantile(wei.more, 0.99)`，即使采用舍选控制进行截断，大多数权重仍然会很小。
+AI给出的建议为将alpha.samp平移到真实值附近进行抽样，这与 Laplace Approximation 有异曲同工之妙。
+
+## 7. Laplace-IS 的R函数实现
+
+Laplace-IS 的核心思想是取 $g(b) = \mathcal{N}(\hat{b}, H^{-1})$ 为建议分布，其中 $\hat{b}$ 是后验密度的极大值点，$H$ 是后验密度在 $\hat{b}$ 处的 Hessian 矩阵。
+
+### 7.1 计算 极大值点 $\hat{b}$ 和 Hessian 矩阵 $H$
+
+```{r laplace approximation}
+# 辅助函数
+neg.log.p.post <- function(par) {
+  -log.p.post(par[1], par[2]) 
+}
+opt <- optim(par = c(0, 0), fn = neg.log.p.post, hessian = TRUE) # 寻找极大值点
+mode <- opt$par 
+hessian <- opt$hessian # Hessian矩阵
+cov <- solve(hessian) # Hessian矩阵的逆
+cat("找到的极值点:", round(mode, 4), "\n")
+```
+
+### 7.2 Laplace-IS 的抽样与估计
+
+```{r laplace IS}
+set.seed(6)
+N <- 10000
+samp_laplace <- rmvnorm(N, mean = mode, sigma = cov) # 构造建议分布
+alpha.samp.lap <- samp_laplace[, 1] # 从建议分布中共抽样
+beta.samp.lap  <- samp_laplace[, 2]
+log_wei_lap <- numeric(N) # log-weights
+for (i in seq_len(N)) {
+  log_wei_lap[i] <- log.p.post(alpha.samp.lap[i], beta.samp.lap[i]) - 
+                    dmvnorm(samp_laplace[i, , drop=FALSE], mean = mode, sigma = cov, log = TRUE)
+}
+wei1_lap <- exp(log_wei_lap - max(log_wei_lap)) 
+wei.lap <- wei1_lap / sum(wei1_lap) # 归一化
+est.lap <- sum(alpha.samp.lap * wei.lap) # Laplace-IS 的估计值
+```
+
+```{r}
+cat("Laplace-IS 的估计值：", round(est.lap, 4), "\n")
+```
+
+### 7.3 Laplace-IS 的诊断
+
+```{r, fig.align='center', fig.width=5, fig.height=4, out.width='70%'}
+summary(wei.lap) # 权重的分布情况
+boxplot(wei.lap) # 权重的箱线图
+cat("Laplace-IS 的有效样本量：", round(ESS(wei.lap), 2), "\n")
+```
+
+**总结**：
+
+- 1. 通过 Laplace-IS 的方法，估计值为`r round(est.lap, 4)`，与真实值`r round(log(K.true), 4)`更加接近。
+- 2. 权重的分布更加均匀，有效样本量也大幅提升，说明 Laplace-IS 有效提升了重要抽样的效率。

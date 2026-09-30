@@ -1,0 +1,1421 @@
+---
+title: "Homework 13"
+author: "张子乐, 3230104237"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    latex_engine: xelatex
+header-includes:
+  - \usepackage[fontset=fandol]{ctex}
+  - \usepackage{float}
+---
+
+```{r setup, include=FALSE}
+Sys.setenv(FONTCONFIG_PATH = "C:/Users/admin/AppData/Roaming/TinyTeX/tlpkg/tlpostcode/xetex/conf")
+options(htmltools.dir.version = FALSE)
+knitr::opts_chunk$set(
+  dev = "cairo_pdf",
+  comment = "",
+  collapse = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.align = "center",
+  fig.width = 5.5,
+  fig.height = 3.4,
+  out.width = "75%"
+)
+
+library(ggplot2)
+library(survival)
+library(flexsurv)
+```
+
+# Practical 12: Survival Analysis
+
+## Answer to Problem 1
+
+### (a) *Is the Censoring Mechanism Uninformative?*
+
+Let $f_C$ and $S_C$ denote the density function and survivor function of the censoring time $C_i$.
+
+- If $\delta_i=1$, then the event is observed at time $y_i$, meaning that $T_i=y_i, C_i\ge y_i.$ Since $T_i$ and $C_i$ are independent, the joint contribution is $f_T(y_i;\lambda)S_C(y_i).$
+
+- If $\delta_i=0$, then censoring occurs at time $y_i$, meaning that $C_i=y_i,T_i>y_i.$ The joint contribution is $f_C(y_i)S_T(y_i;\lambda).$
+
+Thus, the likelihood is
+
+$$
+L(\lambda,\eta)
+=
+\prod_{i=1}^n
+\left[
+f_T(y_i;\lambda)S_C(y_i;\eta)
+\right]^{\delta_i}
+\left[
+S_T(y_i;\lambda)f_C(y_i;\eta)
+\right]^{1-\delta_i},
+$$
+
+where $\eta$ denotes the parameters of the censoring distribution.
+
+This can be factorized as
+
+$$
+L(\lambda,\eta)
+=
+\left\{
+\prod_{i=1}^n
+f_T(y_i;\lambda)^{\delta_i}
+S_T(y_i;\lambda)^{1-\delta_i}
+\right\}
+\left\{
+\prod_{i=1}^n
+S_C(y_i;\eta)^{\delta_i}
+f_C(y_i;\eta)^{1-\delta_i}
+\right\}.
+$$
+
+The first factor depends only on $\lambda$, while the second factor depends only on the censoring parameters $\eta$.
+
+According to the condition given in the problem:
+
+*$C_i$ is independent of $T_i$, and that the parameters of the distribution of $C_i$ are distinct from the parameter $\lambda$*
+
+Therefore, the censoring mechanism is **uninformative** for inference about $\lambda$.
+
+* * * 
+
+### (b) *MLE of $\lambda$ and Its Asymptotic Distribution*
+
+Since $T_i\sim\operatorname{Exp}(\lambda)$, we have
+
+- $h(t)=\lambda$ and $H(t)=\lambda t$
+- $S_T(t)=e^{-\lambda t}$ and $f_T(t)=\lambda e^{-\lambda t}$
+
+The likelihood function is
+$$
+\begin{aligned}
+L(\lambda)
+&=
+\prod_{i=1}^n
+f_T(y_i;\lambda)^{\delta_i}
+S_T(y_i;\lambda)^{1-\delta_i}\\
+&=
+\prod_{i=1}^n
+\left[\lambda e^{-\lambda y_i}\right]^{\delta_i}
+\left[e^{-\lambda y_i}\right]^{1-\delta_i}\\
+&=
+\prod_{i=1}^n
+\lambda^{\delta_i}e^{-\lambda y_i}\\
+&=
+\lambda^{\sum_{i=1}^n\delta_i}
+\exp\left(
+-\lambda\sum_{i=1}^n y_i
+\right)\\
+&=
+\lambda^D e^{-\lambda R}
+\end{aligned}
+$$
+where $D=\sum_{i=1}^n\delta_i$ and $R=\sum_{i=1}^n y_i.$
+
+The log-likelihood function is
+$$
+\ell(\lambda)
+=
+D\log\lambda-\lambda R.
+$$
+
+Differentiating with respect to $\lambda$ gives
+
+$$
+\frac{\partial\ell(\lambda)}{\partial\lambda}
+=
+\frac{D}{\lambda}-R.
+$$
+
+Then we obtain
+
+$$
+\boxed{
+\widehat{\lambda}_{\text{MLE}}
+=
+\frac{D}{R}
+=
+\frac{\sum_{i=1}^n\delta_i}
+{\sum_{i=1}^n y_i}.
+}
+$$
+
+If $D=0$, the likelihood is maximized in the limiting sense as $\widehat{\lambda}\to 0$.
+
+As for the asymptotic distribution, we use the corollary of MLE.
+
+For one observation, the log-likelihood is
+
+$$
+\ell_i(\lambda)
+=
+\delta_i\log\lambda-\lambda y_i.
+$$
+
+The second derivative is
+
+$$
+\frac{\partial^2\ell_i(\lambda)}{\partial\lambda^2}
+=
+-\frac{\delta_i}{\lambda^2}.
+$$
+
+Therefore, the Fisher information from one observation is
+
+$$
+\begin{aligned}
+\mathcal I_1(\lambda)
+&=
+-
+E\left[
+\frac{\partial^2\ell_i(\lambda)}{\partial\lambda^2}
+\right]\\
+&=
+\frac{E(\Delta_i)}{\lambda^2}.
+\end{aligned}
+$$
+
+Define
+
+$$
+p=P(\Delta_i=1)=P(T_i\le C_i).
+$$
+
+Then
+
+$$
+\boxed{
+\mathcal I_1(\lambda)
+=
+\frac{p}{\lambda^2}.
+}
+$$
+
+Since $T_i$ and $C_i$ are independent,
+
+$$
+\begin{aligned}
+p
+&=
+P(T_i\le C_i)\\
+&=
+\int_0^\infty
+f_T(t)P(C_i\ge t)\,dt\\
+&=
+\int_0^\infty
+\lambda e^{-\lambda t}S_C(t)\,dt.
+\end{aligned}
+$$
+
+
+
+By the asymptotic normality of the MLE,
+
+$$
+\sqrt{n}(\widehat{\lambda}-\lambda)
+\xrightarrow{d}
+N\left(
+0,\,
+\mathcal I_1(\lambda)^{-1}
+\right).
+$$
+
+we obtain
+
+$$
+\boxed{
+\sqrt{n}(\widehat{\lambda}-\lambda)
+\xrightarrow{d}
+N\left(
+0,\,
+\frac{\lambda^2}{p}
+\right).
+}
+$$
+
+Equivalently,
+
+$$
+\boxed{
+\widehat{\lambda}
+\overset{a}{\sim}
+N\left(
+\lambda,\,
+\frac{\lambda^2}{np}
+\right).
+}
+$$
+
+
+Here $p=P(\Delta_i=1)$ is the probability that the event is observed. 
+Since the censoring distribution is not specified, $p$ can not be reduced to a numerical value, 
+and we estimate it by $\widehat{p}=\frac{D}{n}$, where $D=\sum_{i=1}^n\delta_i$.
+
+An estimated variance is
+
+$$
+\widehat{\operatorname{Var}}(\widehat{\lambda})
+\approx
+\frac{\widehat{\lambda}^2}{D},
+$$
+
+When there is no censoring, $p=1$, and the result reduces to
+
+$$
+\widehat{\lambda}
+\overset{a}{\sim}
+N\left(
+\lambda,\,
+\frac{\lambda^2}{n}
+\right).
+$$
+
+* * *
+
+### (c) *the PDF and Survivor Function for $T_i$*
+
+It's easy to find that
+$$
+\boxed{
+H(t)
+=
+\begin{cases}
+\lambda_1 t, & 0\le t<\tau_1,\\[4pt]
+\lambda_1\tau_1+\lambda_2(t-\tau_1), & t\ge \tau_1.
+\end{cases}
+}
+$$
+
+Since
+
+$$
+S_T(t)=\exp\{-H(t)\},
+$$
+
+we have
+
+$$
+\boxed{
+S_T(t)
+=
+\begin{cases}
+\exp(-\lambda_1t), & 0\le t<\tau_1,\\[6pt]
+\exp\left[-\lambda_1\tau_1-\lambda_2(t-\tau_1)\right],
+& t\ge\tau_1.
+\end{cases}
+}
+$$
+
+Since $f_T(t)=h(t)S_T(t),$ we obtain
+$$
+\boxed{
+f_T(t)
+=
+\begin{cases}
+\lambda_1\exp(-\lambda_1t),
+& 0\le t<\tau_1,\\[6pt]
+\lambda_2
+\exp\left[-\lambda_1\tau_1-\lambda_2(t-\tau_1)\right],
+& t\ge\tau_1.
+\end{cases}
+}
+$$
+
+Equivalently, in terms of $(\nu_1,\nu_2)$,
+
+$$
+\boxed{
+f_T(t)
+=
+\begin{cases}
+e^{\nu_1}\exp(-e^{\nu_1}t),
+& 0\le t<\tau_1,\\[6pt]
+e^{\nu_2}
+\exp\left[-e^{\nu_1}\tau_1-e^{\nu_2}(t-\tau_1)\right],
+& t\ge\tau_1.
+\end{cases}
+}
+$$
+
+---
+
+### (d) *MLE of $(\nu_1,\nu_2)$ and Its Asymptotic Distribution*
+
+Define
+
+$$
+I_{ij}
+=
+\begin{cases}
+1, & \tau_{j-1}\le y_i<\tau_j,\\
+0, & \text{otherwise},
+\end{cases}
+\qquad j=1,2.
+$$
+
+which indicates whether the observed time $y_i$ falls in interval $j$.
+
+For the two intervals,
+
+$$
+I_{i1}=I(0\le y_i<\tau_1),
+\qquad
+I_{i2}=I(y_i\ge \tau_1).
+$$
+
+Define the time spent by individual $i$ in interval $j$ as
+
+$$
+y_{ij}
+=
+\max\left\{
+0,\,
+\min\left(\tau_j-\tau_{j-1},\,y_i-\tau_{j-1}\right)
+\right\}.
+$$
+
+In the present two-interval case,
+
+$$
+y_{i1}=\min(y_i,\tau_1)
+$$
+
+and
+
+$$
+y_{i2}=(y_i-\tau_1)_+
+=
+\max(0,y_i-\tau_1).
+$$
+
+Now define
+
+$$
+d_j=\sum_{i=1}^n \delta_i I_{ij},
+\qquad
+r_j=\sum_{i=1}^n y_{ij},
+\qquad j=1,2.
+$$
+
+Here,
+
+- $d_j$ is the number of observed events in interval $j$
+- $r_j$ is the total time at risk contributed in interval $j$
+
+For individual $i$, the likelihood related to the survival parameters is
+
+$$
+L_i(\nu_1,\nu_2)
+=
+h(y_i)^{\delta_i}\exp\{-H(y_i)\}.
+$$
+
+Using the interval notation, this can be written as
+
+$$
+L_i(\nu_1,\nu_2)
+=
+\prod_{j=1}^2
+\left(e^{\nu_j}\right)^{\delta_i I_{ij}}
+\exp\left(-e^{\nu_j}y_{ij}\right).
+$$
+
+Therefore, the likelihood function is
+
+$$
+\begin{aligned}
+L(\nu_1,\nu_2)
+&=
+\prod_{i=1}^n
+\prod_{j=1}^2
+\left(e^{\nu_j}\right)^{\delta_i I_{ij}}
+\exp\left(-e^{\nu_j}y_{ij}\right)\\
+&=
+\prod_{j=1}^2
+\left(e^{\nu_j}\right)^{d_j}
+\exp\left(-e^{\nu_j}r_j\right).
+\end{aligned}
+$$
+
+Hence, the log-likelihood function is
+
+$$
+\ell(\nu_1,\nu_2)
+=
+d_1\nu_1-r_1e^{\nu_1}
++
+d_2\nu_2-r_2e^{\nu_2}.
+$$
+
+For $j=1,2$,
+
+$$
+\frac{\partial\ell}{\partial\nu_j}
+=
+d_j-r_je^{\nu_j}.
+$$
+
+Therefore,
+
+$$
+e^{\widehat{\nu}_j}
+=
+\frac{d_j}{r_j}.
+$$
+
+Since $\lambda_j=e^{\nu_j}$, we obtain the MLEs
+
+$$
+\boxed{
+\widehat{\lambda}_j
+=
+\frac{d_j}{r_j},
+\widehat{\nu}_j
+=
+\log\left(\frac{d_j}{r_j}\right),
+j=1,2.
+}
+$$
+
+That is,
+
+$$
+\boxed{
+\widehat{\nu}_1
+=
+\log\left(
+\frac{\sum_{i=1}^n\delta_i I_{i1}}
+{\sum_{i=1}^n y_{i1}}
+\right), 
+\widehat{\nu}_2
+=
+\log\left(
+\frac{\sum_{i=1}^n\delta_i I_{i2}}
+{\sum_{i=1}^n y_{i2}}
+\right).
+}
+$$
+
+If $d_j=0$ for some interval $j$, then $\widehat{\lambda}_j=0$
+and $\widehat{\nu}_j=-\infty.$
+Thus, there is no finite interior MLE for $\nu_j$ when no observed event occurs in interval $j$.
+
+The second derivatives of the log-likelihood are
+
+$$
+\frac{\partial^2\ell}{\partial\nu_j^2}
+=
+-r_je^{\nu_j},
+\qquad j=1,2,
+$$
+
+and
+
+$$
+\frac{\partial^2\ell}{\partial\nu_1\partial\nu_2}
+=
+0.
+$$
+
+For one observation, define
+
+$$
+m_j=E(Y_{ij}),
+\qquad j=1,2.
+$$
+
+Then the Fisher information contribution for $\nu_j$ is
+
+$$
+\mathcal I_j
+=
+e^{\nu_j}m_j.
+$$
+
+Define
+
+$$
+\pi_j
+=
+P\left(
+\Delta_i=1,\,
+\tau_{j-1}\le Y_i<\tau_j
+\right),
+\qquad j=1,2.
+$$
+
+This is the probability that an individual has an observed event in interval $j$.
+
+Under independent censoring, $\pi_j=e^{\nu_j}E(Y_{ij}),$ the Fisher information matrix for one observation is
+
+$$
+\mathcal I(\nu_1,\nu_2)
+=
+\begin{pmatrix}
+\pi_1 & 0\\
+0 & \pi_2
+\end{pmatrix}
+$$
+
+Where
+
+$$
+\pi_1
+=
+\int_0^{\tau_1}
+e^{\nu_1}
+\exp(-e^{\nu_1}t)
+S_C(t)\,dt,
+\pi_2
+=
+\int_{\tau_1}^{\infty}
+e^{\nu_2}
+\exp\left[
+-e^{\nu_1}\tau_1-e^{\nu_2}(t-\tau_1)
+\right]
+S_C(t)\,dt.
+$$
+
+Assume that $\pi_1>0$ and $\pi_2>0.$
+
+Then, by the asymptotic normality of the MLE,
+
+$$
+\boxed{
+\sqrt{n}
+\begin{pmatrix}
+\widehat{\nu}_1-\nu_1\\
+\widehat{\nu}_2-\nu_2
+\end{pmatrix}
+\xrightarrow{d}
+N_2
+\left[
+\begin{pmatrix}
+0\\
+0
+\end{pmatrix},
+\begin{pmatrix}
+1/\pi_1 & 0\\
+0 & 1/\pi_2
+\end{pmatrix}
+\right].
+}
+$$
+
+Equivalently, for each $j=1,2$,
+
+$$
+\boxed{
+\widehat{\nu}_j
+\overset{a}{\sim}
+N\left(
+\nu_j,\,
+\frac{1}{n\pi_j}
+\right).
+}
+$$
+
+Since $\widehat{\pi}_j=\frac{d_j}{n},$ we may estimate the asymptotic variance by $\widehat{\operatorname{Var}}(\widehat{\nu}_j)\approx\frac{1}{d_j}.$
+
+As for *why use the parameterization $\lambda_j=e^{\nu_j}$*,
+the hazard rates must satisfy $\lambda_j>0$.
+If we estimate $\lambda_j$ directly, the optimization problem must be constrained to positive values.
+
+By writing $\lambda_j=e^{\nu_j},$
+we allow $\nu_j\in\mathbb R$ 
+without any additional constraints, while automatically ensuring that $\lambda_j>0.$
+
+This parameterization also gives a convenient log-likelihood:
+
+$$
+\ell(\nu_1,\nu_2)
+=
+\sum_{j=1}^2
+\left[
+d_j\nu_j-r_je^{\nu_j}
+\right],
+$$
+
+which is concave in $(\nu_1,\nu_2)$.
+
+---
+
+### Additional question: *Is $T_i$ being independent of $C_i$ sufficient for censoring to be uninformative?*
+
+(*Consider the situation where $T_i$ is independent of $C_i$, but both $T_i$ and $C_i$ are distributed as Exponential random variables with common rate parameter $\lambda$.*)
+
+**NOT SUFFICIENT.**
+
+Under independent censoring, the full likelihood can be factorized as
+
+$$
+L(\lambda,\eta)
+=
+\left\{
+\prod_{i=1}^n
+f_T(y_i;\lambda)^{\delta_i}
+S_T(y_i;\lambda)^{1-\delta_i}
+\right\}
+\left\{
+\prod_{i=1}^n
+S_C(y_i;\eta)^{\delta_i}
+f_C(y_i;\eta)^{1-\delta_i}
+\right\}.
+$$
+
+If the censoring parameter $\eta$ is distinct from $\lambda$, then the second factor does not involve $\lambda$. 
+Therefore, when estimating $\lambda$, it can be ignored. In this case, the censoring mechanism is uninformative.
+
+However, suppose that $T_i\sim \operatorname{Exp}(\lambda),\qquad C_i\sim \operatorname{Exp}(\lambda)$ even though $T_i$ and $C_i$ are independent. Then the censoring also depends on $\lambda$.
+
+The full likelihood becomes
+
+$$
+L(\lambda)
+=
+\prod_{i=1}^n
+\left[
+f_T(y_i;\lambda)S_C(y_i;\lambda)
+\right]^{\delta_i}
+\left[
+S_T(y_i;\lambda)f_C(y_i;\lambda)
+\right]^{1-\delta_i}.
+$$
+
+Since $f_T(y;\lambda)=\lambda e^{-\lambda y},S_T(y;\lambda)=e^{-\lambda y},$
+
+we get
+
+$$
+L(\lambda)
+=
+\lambda^n
+\exp\left(-2\lambda\sum_{i=1}^n y_i\right).
+$$
+
+Thus the full-likelihood MLE is
+
+$$
+\widehat{\lambda}
+=
+\frac{n}{2\sum_{i=1}^n y_i}.
+$$
+
+But if we incorrectly ignore the censoring  , we would use only
+
+$$
+L_T(\lambda)
+=
+\prod_{i=1}^n
+f_T(y_i;\lambda)^{\delta_i}
+S_T(y_i;\lambda)^{1-\delta_i}
+=
+\lambda^{\sum_i\delta_i}
+\exp\left(-\lambda\sum_i y_i\right),
+$$
+
+which gives
+
+$$
+\widehat{\lambda}
+=
+\frac{\sum_{i=1}^n\delta_i}
+{\sum_{i=1}^n y_i}.
+$$
+
+These two estimators are generally different. 
+
+---
+
+## Problem 2
+```{r,echo=FALSE}
+print_no_call <- function(x) {
+  out <- capture.output(print(x))
+  call_lines <- grep("^Call:", out)
+  if (length(call_lines) > 0) {
+    drop <- integer()
+    for (i in call_lines) {
+      j <- i
+      repeat {
+        drop <- c(drop, j)
+        j <- j + 1
+        if (j > length(out) || out[j] == "") break
+      }
+    }
+    out <- out[-unique(drop)]
+  }
+  cat(out, sep = "\n")
+}
+```
+
+
+```{r problem2-load}
+# Load the file Leuk.csv into R 
+Leuk <- read.csv("Leuk.csv")
+# 0 = Placebo, 1 = 6-MP
+Leuk$drug_group <- factor(
+  Leuk$drug,
+  levels = c(0, 1),
+  labels = c("Placebo", "6-MP")
+)
+# 0 = Female, 1 = Male
+Leuk$sex_group <- factor(
+  Leuk$sex,
+  levels = c(0, 1),
+  labels = c("Female", "Male")
+)
+```
+
+```{r}
+# Overview of the data
+head(Leuk)
+```
+
+```{r}
+summary(Leuk)
+```
+
+---
+
+###  (a) *Do you observe any initial 'differences' between the two treatment groups?*
+
+```{r problem2-a}
+# Comparison of 2 groups
+# time and logwbc are continuous
+aggregate(
+  cbind(time,logwbc) ~ drug_group,
+  data = Leuk,
+  FUN = function(x) c(mean = mean(x),sd = sd(x))
+) 
+```
+
+```{r}
+# cens and sex_group are categorical
+# 0 = censoring, 1 = coming out of remission
+with(Leuk, list(event = table(drug_group, cens),sex = table(drug_group, sex_group)))
+```
+
+- The 6-MP group has a **longer** average remission *time*, about 17.10 weeks, while the placebo group has an
+average remission time of about 8.67 weeks. 
+- **All** placebo patients came out of remission, but many 6-MP patients were **censored**, which suggests longer remission under 6-MP.
+- The *sex* distribution is **balanced** between the two groups.
+
+```{r problem2-surv-object}
+leuk.survobj <- Surv(time = Leuk$time, event = Leuk$cens) # 创建生存对象
+# 没有加号表示事件发生，加号表示右删失
+leuk.survobj
+```
+
+---
+
+### Kaplan-Meier Curves
+
+```{r problem2-km-overall}
+# obtain the overall K-M curve
+leuk.kmoverall <- survfit(leuk.survobj ~ 1, data = Leuk)
+# n.risk: 仍在观察中 survival: 生存概率 
+print_no_call(summary(leuk.kmoverall))
+```
+
+```{r,echo=FALSE}
+plot(leuk.kmoverall, conf.int = TRUE, col = 2)
+title("Overall K-M curve")
+```
+
+```{r problem2-km-drug}
+# obtain K-M curves for the treatment groups
+leuk.kmdrug <- survfit(leuk.survobj ~ drug_group, data = Leuk)
+knitr::kable(leuk.kmdrug$table)
+```
+
+```{r}
+print_no_call(summary(leuk.kmdrug)) # summary(leuk.kmdrug)
+```
+
+```{r,echo=FALSE}
+km23 <- summary(leuk.kmdrug, times = 23)
+km23_table <- data.frame(
+  group = sub("^drug_group=", "", km23$strata),
+  time = km23$time,
+  risk = km23$n.risk,
+  event = km23$n.event,
+  surv = km23$surv,
+  se = km23$std.err,
+  lower_CI = km23$lower,
+  upper_CI = km23$upper
+)
+```
+
+```{r}
+knitr::kable(km23_table, digits = 3) # summary(leuk.kmdrug, times = 23)
+```
+
+```{r,echo=FALSE}
+plot(leuk.kmdrug, col = 2:3, lty = 1:2,
+     xlab = "Remission times",
+     ylab = "Proportion in remission")
+legend("topright", c("Placebo", "6-MP"), lty = 1:2, col = 2:3)
+title("K-M curves for the two treatment groups")
+```
+
+
+###  (b) *What are these curves telling us?*
+
+- The K-M curves show that patients receiving 6-MP generally remain in remission **longer** than patients receiving placebo. 
+- At week 23, the estimated survivor probability is about 0 for placebo and about 0.45 for 6-MP.
+
+###  (c) *Now plot the survival curves by sex and by logwbc.*
+
+(*logwbc is continuous, should we group it ?*)
+
+```{r problem2-c, echo=FALSE}
+leuk.kmsex <- survfit(leuk.survobj ~ sex_group, data = Leuk)
+plot(leuk.kmsex, col = 4:5, lty = 1:2,
+     xlab = "Remission times",
+     ylab = "Proportion in remission")
+legend("topright", c("Female", "Male"), lty = 1:2, col = 4:5)
+title("K-M curves by sex")
+# logwbc is continuous, should we group it ?
+leuk.kmlogwbc <- survfit(leuk.survobj ~ logwbc, data = Leuk)
+plot(leuk.kmlogwbc, col = rainbow(length(leuk.kmlogwbc$strata)), lty = 1,
+     xlab = "Remission times",
+     ylab = "Proportion in remission")
+title("K-M curves by observed logwbc values(no grouping)")
+Leuk$logwbc_group <- cut(
+  Leuk$logwbc,
+  breaks = quantile(Leuk$logwbc, probs = c(0, 0.5, 1), na.rm = TRUE),
+  include.lowest = TRUE,
+  labels = c("Low logwbc", "High logwbc")
+)
+leuk.logwbc_group <- survfit(leuk.survobj ~ logwbc_group, data = Leuk)
+plot(leuk.logwbc_group, col = rainbow(length(leuk.logwbc_group$strata)), lty = 1,
+     xlab = "Remission times",
+     ylab = "Proportion in remission")
+legend("topright", levels(Leuk$logwbc_group), col = rainbow(length(levels(Leuk$logwbc_group))), lty = 1)
+title("K-M curves by observed logwbc values(grouped)")
+```
+
+---
+
+### Log-Rank Tests
+
+(*to assess whether patients in the 6-MP group remaining generally in remission longer*)
+
+```{r problem2-logrank-drug}
+logrank.drug <- survdiff(leuk.survobj ~ drug_group, data = Leuk)
+print_no_call(logrank.drug)
+```
+
+###  (d) *What do you conclude? What are the test-statistic values for the log-rank statistic and its approximation?*
+
+- The drug log-rank test gives a **chi-square statistic** of about 16.8 with 1 degree of freedom and **p-value** about $4e-05$.
+- There is strong evidence that the remission distributions **differ** between placebo and 6-MP.
+
+###  (e) *Perform now the log-rank test on sex and logwbc. What are your conclusions? Was it appropriate to use the log-rank test for these variables?*
+
+```{r problem2-logrank-sex-logwbc}
+# log-rank tests on sex
+logrank.sex <- survdiff(leuk.survobj ~ sex_group, data = Leuk)
+print_no_call(logrank.sex)
+```
+
+```{r}
+# log-rank tests on continuous logwbc
+#logrank.logwbc <- survdiff(leuk.survobj ~ logwbc, data = Leuk) 
+
+# log-rank tests on grouped logwbc
+logrank.logwbc <- survdiff(leuk.survobj ~ logwbc_group, data = Leuk) 
+print_no_call(logrank.logwbc)
+```
+
+- The sex log-rank test is *not* significant, with **chi-square** about 0.6 and **p-value** about 0.5.
+- The log-rank test is *not* really appropriate for raw continuous logwbc so that we **grouped** logwbc into 2 groups for log-rank tests.
+- After grouping the continuous variable `logwbc` into low and high groups, the log-rank test shows a highly **significant** difference between the two survival curves.
+
+- The low-logwbc group has 11 observed events, much fewer than the
+21.39 events expected under the null hypothesis of equal survival curves. 
+
+- The high-logwbc group has 19 observed events, much more than the
+8.61 expected events.
+
+- The log-rank **chi-square** statistic is 20.9 with 1 degree of freedom, and the
+**p-value** is about \(5 \times 10^{-6}\). Therefore, we **reject** the null hypothesis
+and conclude that remission times **differ significantly** between the two
+logwbc groups.
+
+- Patients with higher logwbc tend to come out of remission
+earlier, while patients with lower logwbc tend to remain in remission longer.
+
+
+---
+
+### Cox Proportional Hazards Models
+
+*To assess the effect of 6-MP on the hazard of coming out of remission, we begin by only including drug into the Cox PH model (i.e. fitting an unadjusted Cox PH model).*
+
+We fit the Cox proportional hazards model
+
+$$
+h(t \mid \text{drug}) = h_0(t)\exp(\beta \cdot \text{drug}),
+$$
+
+where:
+
+- $h(t \mid \text{drug})$ is the hazard of relapse at time $t$
+- $h_0(t)$ is the baseline hazard for the placebo group
+- $\text{drug}=0$ represents the placebo group, $\text{drug}=1$ represents the 6-MP treatment group
+- $\beta$ measures the treatment effect
+
+```{r problem2-cox-drug}
+leuk.ph <- coxph(leuk.survobj ~ drug, data = Leuk)
+print_no_call(summary(leuk.ph))
+```
+
+###  (f) *Do you understand the output? How do you interpret the drug effect? What hypothesis is the likelihood ratio and Wald tests in the output testing?*
+
+The fitted model is
+
+$$
+\hat h(t \mid \text{drug}) = h_0(t)\exp(-1.5721 \cdot \text{drug}).
+$$
+
+Thus, the estimated hazard ratio for 6-MP versus placebo is
+
+$$
+\exp(\hat\beta) = \exp(-1.5721) = 0.2076.
+$$
+
+- The hazard ratio is about **0.208**, meaning that the relapse hazard for patients receiving 6-MP is approximately 20.8% of that for patients receiving placebo.
+
+- The p-value for the drug coefficient is $p = 0.000138,$ which is much smaller than 0.05. Therefore, the treatment effect is statistically **significant**.
+
+- The 95% confidence interval for the hazard ratio is $(0.0925,\ 0.4659),$ which is entirely **below** 1. This also indicates that 6-MP significantly **lowers** the risk of relapse compared with placebo.
+
+- Overall, the Cox model suggests that patients treated with 6-MP tend to remain in remission **longer** than patients in the placebo group.
+
+- The likelihood ratio and Wald tests are testing the null hypothesis that the *drug coefficient is zero*.
+
+
+###  (g) *Based on the variables provided in Leuk, come up with a "best" fitting Cox PH model. Is there a drug by logwbc interaction? Interpret the results from your best/final model.*
+
+```{r problem2-cox-models}
+leuk.ph.drug.logwbc <- coxph(leuk.survobj ~ drug + logwbc, data = Leuk) 
+leuk.ph.full <- coxph(leuk.survobj ~ drug + sex + logwbc, data = Leuk) 
+leuk.ph.int <- coxph(leuk.survobj ~ drug * logwbc + sex, data = Leuk)
+anova(leuk.ph.full, leuk.ph.int, test = "Chisq") #  检验交互项
+```
+
+```{r}
+print_no_call(summary(leuk.ph.drug.logwbc)) # drug + logwbc
+```
+
+```{r}
+print_no_call(summary(leuk.ph.full)) # drug + sex + logwbc
+```
+
+```{r}
+print_no_call(summary(leuk.ph.int)) # drug * logwbc + sex
+```
+
+```{r}
+AIC(leuk.ph,leuk.ph.drug.logwbc,leuk.ph.full,leuk.ph.int) # 比较各个模型的AIC
+```
+
+- The drug-by-logwbc interaction is *not* statistically significant, with a p-value of about 0.464.
+- We also compared the additive Cox model with the interaction model using a likelihood ratio test. The test statistic is 0.5286 with 1 degree of freedom, and the **p-value** is 0.4672, which is much larger than 0.05. 
+- Among the fitted Cox models, the model **including drug and continuous logwbc** has the smallest AIC, so it is selected as the final model.
+- In this final model, the `hazard ratio` for 6-MP versus placebo is 0.250, meaning that 6-MP reduces the relapse hazard by about 75% after adjusting for logwbc.
+
+- For logwbc, the `hazard ratio` is 5.424 per one-unit increase, suggesting that higher logwbc is strongly associated with earlier relapse.
+
+---
+
+###  (h) *Can you figure out how to plot the predicted survival curve for a person who is on 6-MP and has a logwbc value of 4.00? You may want to look at the help file for the R command survfit.*
+
+```{r problem2-predicted-survival}
+new.patient <- data.frame(drug = 1, logwbc = 4.00)
+new.patient.surv <- survfit(leuk.ph.drug.logwbc, newdata = new.patient)
+print_no_call(new.patient.surv)
+```
+
+```{r,echo=FALSE}
+plot(new.patient.surv, conf.int = TRUE, col = 2,
+     xlab = "Remission time",
+     ylab = "Predicted proportion in remission")
+```
+
+---
+
+### Assessing the Proportional Hazards Assumption
+
+*To assess the validity of the PH assumption for the drug variable, begin by plotting the complementary log-log curves for the Placebo and 6-MP groups.*
+
+```{r,echo=FALSE}
+# To assess the validity of the PH assumption for the drug variable
+plot(survfit(leuk.survobj ~ drug_group, data = Leuk),
+     col = 2:3, lty = 1:2, fun = "cloglog",
+     xlim = c(1, 40), ylim = c(-3, 3),
+     xlab = "Time of remission",
+     ylab = "log(-log(S(t)))")
+legend("topleft", c("Placebo", "6-MP"), lty = 1:2, col = 2:3)
+```
+
+```{r}
+cox.zph(leuk.ph) # using the default K-M transformation of time
+```
+
+###  (i) *What do you conclude?*
+
+- The complementary log-log curves do *not* show a major violation for drug. 
+- The Schoenfeld residual test gives a p-value about 0.88 for drug, so there is *no* evidence against the proportional hazards assumption for the drug variable in the unadjusted Cox model.
+
+###  (j) *Test whether the PH assumption is satisfied for sex and logwbc.*
+
+```{r,echo=FALSE}
+# Test whether the PH assumption is satisfied for sex
+plot(survfit(leuk.survobj ~ sex_group, data = Leuk),
+     col = 4:5, lty = 1:2, fun = "cloglog",
+     xlim = c(1, 40), ylim = c(-3, 3),
+     xlab = "Time of remission",
+     ylab = "log(-log(S(t)))")
+legend("topleft", c("Female", "Male"), lty = 1:2, col = 4:5)
+```
+
+```{r}
+cox.zph(leuk.ph.full)
+```
+
+(*For `logwbc`, which is a continuous variable, the complementary log-log plot should be based on grouped values rather than treating every observed value as a separate group.*)
+
+
+```{r,echo=FALSE}
+# Test whether the PH assumption is satisfied for logwbc
+Leuk$logwbc_group <- cut(
+  Leuk$logwbc,
+  breaks = quantile(Leuk$logwbc, probs = c(0, 0.5, 1), na.rm = TRUE),
+  include.lowest = TRUE,
+  labels = c("Low logwbc","High logwbc")
+)
+leuk.cloglog.logwbc <- survfit(leuk.survobj ~ logwbc_group, data = Leuk)
+plot(leuk.cloglog.logwbc,
+     col = rainbow(length(leuk.cloglog.logwbc$strata)), lty = 1, fun = "cloglog",
+     xlim = c(1, 40), ylim = c(-3, 3),
+     xlab = "Time of remission",
+     ylab = "log(-log(S(t)))")
+legend("topleft", levels(Leuk$logwbc_group),
+       col = rainbow(length(leuk.cloglog.logwbc$strata)), lty = 1)
+```
+
+```{r}
+# check the selected Cox model with drug and logwbc
+cox.zph(leuk.ph.drug.logwbc) 
+```
+
+- In the full Cox model including `drug`, `sex`, and `logwbc`, the Schoenfeld residual test gives a **p-value** for sex about 0.02, suggesting a possible **violation** of the proportional hazards assumption for sex.
+- In the final selected Cox model with `drug` and `logwbc`, the Schoenfeld residual test does *not* show evidence of PH violation for either variable. The **p-values** are about 0.99 for drug, 0.84 for logwbc, and 0.98 for the global test.
+- As for the full model where `sex` is included, a reasonable approach is to stratify by sex. 
+- In the stratified Cox model, the PH tests for `drug` and `logwbc` are *not* significant, so the stratified model also appears appropriate.
+
+(*If the PH assumption is not satisfied, re-fit the Cox model but now stratifying by the variable not satisfying the PH assumption.*)
+
+```{r}
+leuk.sc <- coxph(leuk.survobj ~ drug + logwbc + strata(sex), data = Leuk)
+print_no_call(summary(leuk.sc))
+cox.zph(leuk.sc)
+```
+
+---
+
+## Problem 3
+
+```{r problem3-setup}
+# load the data
+lungdat <- survival::lung
+# 0 = censored, 1 = dead
+lungdat$status <- lungdat$status - 1 # creating 0/1 event indicator
+# ECOG 0/ECOG 1/ECOG 2+
+lungdat$ph.ecogcat <- ifelse(lungdat$ph.ecog >= 2, 2, lungdat$ph.ecog)
+# wt.loss = weight loss in last six months; positive values mean weight loss
+lungdat$wtlossyn <- ifelse(lungdat$wt.loss > 0, 1, 0)
+head(lungdat)
+```
+
+###  (a) *What does the overall survival distribution look like?*
+
+```{r problem3-km-overall}
+lung.survobj <- Surv(time = lungdat$time, event = lungdat$status) # 创建生存对象
+lung.kmoverall <- survfit(lung.survobj ~ 1, data = lungdat) # 包括所有病人，不分组
+print_no_call(lung.kmoverall)
+```
+
+```{r}
+print_no_call(summary(lung.kmoverall, times = c(180, 365, 730))) # 挑3个时间点
+```
+
+```{r problem3-km-overall-plot, echo=FALSE}
+plot(lung.kmoverall, conf.int = TRUE, col = 2,
+     xlab = "Survival time (days)",
+     ylab = "Survival probability")
+title("Overall K-M curve for the lung cancer data")
+```
+
+- The overall survival curve **decreases** steadily over time. 
+- The **median** survival time is about 310 days
+- The estimated **survival probability** at one year is roughly 0.41
+
+---
+
+### (b) *Which of these four distributions is preferred? Why?*
+
+```{r problem3-parametric-models}
+ex <- flexsurvreg(Surv(time, status) ~ 1, data = lungdat, dist = "exponential")
+we <- flexsurvreg(Surv(time, status) ~ 1, data = lungdat, dist = "weibull")
+go <- flexsurvreg(Surv(time, status) ~ 1, data = lungdat, dist = "gompertz")
+gg <- flexsurvreg(Surv(time, status) ~ 1, data = lungdat, dist = "gengamma")
+```
+
+```{r,echo=FALSE}
+parametric_models <- list(
+  Exponential = ex,
+  Weibull = we,
+  Gompertz = go,
+  GenGamma = gg
+)
+model_compare <- data.frame(
+  distribution = names(parametric_models),
+  logLik = sapply(parametric_models, function(x) x$loglik),
+  AIC = sapply(parametric_models, function(x) x$AIC),
+  row.names = NULL
+)
+model_compare <- model_compare[order(model_compare$AIC), ]
+knitr::kable(model_compare, digits = 3)
+```
+
+- The `GenGamma` distribution has the highest log-likelihood, but the log-likelihood of the `Weibull` distribution is very close to it.
+- A **smaller** AIC indicates a better balance between model fit and model complexity. As a result, the `Weibull` distribution provides the best fit among the four parametric models.
+
+### (c) *What do you conclude from this figure?*
+
+```{r problem3-parametric-survival-plot, echo=FALSE}
+plot(lung.kmoverall, conf.int = FALSE, mark.time = TRUE,
+     xlab = "Time (days)", ylab = "Survival",col = "black", lwd = 2)
+lines(ex, col = "purple", ci = FALSE, lwd = 2)
+lines(we, col = "blue", ci = FALSE, lwd = 2)
+lines(go, col = "green", ci = FALSE, lwd = 2)
+lines(gg, col = "red", ci = FALSE, lwd = 2)
+legend("topright",
+       lty = c(1, 1, 1, 1, 1),
+       lwd = c(2, 2, 2, 2, 2),
+       col = c("black", "purple", "blue", "green", "red"),
+       c("KM", "Exp", "Weib", "Gomp", "GenGam"))
+```
+
+- The `exponential` model appears to 
+provide a poorer fit to the Kaplan-Meier curve. 
+- It tends to underestimate survival at earlier times and overestimate survival at later times, 
+suggesting that the constant hazard assumption may be too restrictive.
+
+- The `Weibull`, `Gompertz`, and `generalized gamma` models fit the Kaplan-Meier curve much better. 
+
+---
+
+### (d)*To determine the hazard function for the fitted exponential model, you can run the command `summary(ex, type="hazard",ci=TRUE,tidy=FALSE)`. Can you figure out how to plot the estimated hazard functions for these four distributions on the same figure?*
+
+```{r problem3-exponential-hazard}
+# hazard summary for the exponential model
+# the full output is quite long so we only show 3 time points
+summary(ex, type = "hazard",t=c(50,100,150),ci = TRUE, tidy = FALSE)
+```
+
+```{r problem3-hazard-plot, echo=FALSE}
+time_grid <- seq(1, max(lungdat$time, na.rm = TRUE), length.out = 500)
+hazard_data <- do.call(
+  rbind,
+  lapply(names(parametric_models), function(nm) {
+    hazard_summary <- summary(
+      parametric_models[[nm]],
+      type = "hazard",
+      t = time_grid,
+      ci = FALSE,
+      tidy = TRUE
+    )
+    data.frame(
+      distribution = nm,
+      time = hazard_summary$time,
+      hazard = hazard_summary$est
+    )
+  })
+)
+ggplot(hazard_data, aes(x = time, y = hazard, color = distribution)) +
+  geom_line(linewidth = 0.8) +
+  labs(x = "Time (days)", y = "Estimated hazard",
+       color = "Distribution") +
+  theme_minimal()
+```
+
+- The `exponential` model has a **flat** hazard by construction. 
+- The other models allow the hazard to change over time, which is more realistic if the risk of death is not constant throughout follow-up.
+
+###  (e) *Interpret the output.*
+
+```{r problem3-weibull-ecog}
+lungdat_ecog <- subset(lungdat, !is.na(ph.ecogcat))
+we.reg <- flexsurvreg(
+  Surv(time, status) ~ factor(ph.ecogcat),
+  data = lungdat_ecog,
+  dist = "weibull"
+)
+print_no_call(we.reg)
+```
+
+```{r,echo=FALSE}
+we_shape <- we.reg$res["shape", "est"]
+ecog_coef_names <- grep("ph\\.ecogcat", rownames(we.reg$res), value = TRUE)
+ecog_effects <- data.frame(
+  term = ecog_coef_names,
+  beta = we.reg$res[ecog_coef_names, "est"],
+  acceleration_factor = exp(we.reg$res[ecog_coef_names, "est"]),
+  weibull_PH_hazard_ratio = exp(-we_shape * we.reg$res[ecog_coef_names, "est"]),
+  row.names = NULL
+)
+knitr::kable(ecog_effects, digits = 3)
+```
+
+- The Weibull AFT model uses `ECOG 0` as the reference group.
+
+- The estimated acceleration factor for `ECOG 1` is 0.767, suggesting **shorter** survival compared with ECOG 0. However, its 95% confidence interval includes 1, so this effect is not clearly significant at the 5% level.
+
+- The estimated acceleration factor for `ECOG 2` is 0.505, with a 95% confidence interval entirely below 1, indicating significantly **shorter** survival compared with ECOG 0.
+
+- The Weibull shape parameter is 1.356, which is greater than 1. This suggests that the baseline hazard **increases** over time.
+
+###  (f) *How would you interpret this output with regard to accelerating life and proportional hazards?*
+
+- Since the Weibull model can also be interpreted in proportional hazards form, the corresponding hazard ratio is given by $\exp(-\hat\alpha\hat\beta)$, where $\hat\alpha$ is the Weibull shape parameter and $\hat\beta$ is the AFT coefficient.
+
+- `ECOG 1` has an estimated mortality hazard about 1.43 times that of ECOG 0, while `ECOG 2` has an estimated mortality hazard about 2.52 times that of ECOG 0.
+
+- **Worse** ECOG performance status is associated with shorter survival time and higher mortality risk.
+
+###  (g) *What do you conclude from looking at this plot?*
+
+```{r problem3-cloglog-ecog, echo=FALSE}
+lung.kmph.ecog <- survfit(lung.survobj ~ factor(ph.ecogcat), data = lungdat)
+plot(lung.kmph.ecog, col = 2:4, lty = 1:3, fun = "cloglog", log = "x",
+     xlab = "t on log-scale",
+     ylab = "log(-log(S(t)))")
+legend("topleft", c("ECOG 0", "ECOG 1", "ECOG 2+"), col = 2:4, lty = 1:3)
+```
+
+- The complementary log-log curves show clear separation between the ECOG groups. 
+- The `ECOG 2+` group tends to have a **higher** curve, suggesting a higher cumulative hazard and shorter survival compared with the `ECOG 0` and `ECOG 1` groups.
+- The curves are *not* perfectly straight or perfectly parallel on the log-time scale, which suggests that the common-shape Weibull PH/AFT structure may only be an approximate working model. 
+- The non-parallel pattern indicates that ECOG may also affect the shape of the Weibull hazard function, not only the scale of survival time.
+- Since the plot is based on KM step functions and the sample size becomes smaller at later times, some departures from parallelism are expected. 
+- The plot does not completely rule out the Weibull model, but it motivates checking a more flexible Weibull model in which the shape parameter is allowed to depend on ECOG.
+
+###  (h) *What impact does ECOG have on the shape of the Weibull regression model just fitted?*
+
+```{r problem3-ecog-shape}
+# ECOG 影响 scale 同时还影响 shape
+we.reg.shape.ecog <- flexsurvreg(
+  Surv(time, status) ~ factor(ph.ecogcat),
+  anc = list(shape = ~ factor(ph.ecogcat)),
+  data = lungdat_ecog,
+  dist = "weibull"
+)
+ecog_shape_compare <- data.frame(
+  model = c("Common shape", "Shape depends on ECOG"),
+  logLik = c(we.reg$loglik, we.reg.shape.ecog$loglik),
+  AIC = c(we.reg$AIC, we.reg.shape.ecog$AIC)
+)
+knitr::kable(ecog_shape_compare, digits = 3)
+```
+
+```{r}
+print_no_call(we.reg.shape.ecog)
+```
+
+- The model allowing the Weibull `shape` parameter to depend on ECOG has a **slightly higher** log-likelihood than the common-shape model, but its AIC is **larger**. This means that the improvement in model fit is *not* large enough to justify the additional shape parameters.
+
+- The estimated shape effects for ECOG 1 and ECOG 2+ are also not clearly significant, since their confidence intervals include 1 after exponentiation. 
+- There is no strong evidence that ECOG has an important effect on the `shape` of the Weibull hazard function.
+- The simpler common-shape Weibull model is preferred. ECOG mainly appears to affect the `scale` of survival time, with worse ECOG performance associated with shorter survival, rather than changing the `shape` of the Weibull survival distribution.
+
+###  (i) *What impact does weight loss in the last six months (`wtlossyn` variable) have on the risk and the shape of the Weibull regression model just fitted?*
+
+```{r problem3-weight-loss-models}
+lungdat_wt <- subset(lungdat, !is.na(ph.ecogcat) & !is.na(wtlossyn))
+# ECOG 和 wtlossyn 只影响 scale
+we.reg.wt <- flexsurvreg(
+  Surv(time, status) ~ factor(ph.ecogcat) + factor(wtlossyn),
+  data = lungdat_wt,
+  dist = "weibull"
+)
+# ECOG 和 wtlossyn 影响 scale，同时 wtlossyn 还影响 shape
+we.reg.wt.shape <- flexsurvreg(
+  Surv(time, status) ~ factor(ph.ecogcat) + factor(wtlossyn),
+  anc = list(shape = ~ factor(wtlossyn)),
+  data = lungdat_wt,
+  dist = "weibull"
+)
+wt_compare <- data.frame(
+  model = c("Weight loss affects scale", "Weight loss affects scale and shape"),
+  logLik = c(we.reg.wt$loglik, we.reg.wt.shape$loglik),
+  AIC = c(we.reg.wt$AIC, we.reg.wt.shape$AIC)
+)
+knitr::kable(wt_compare, digits = 3)
+```
+
+```{r}
+print_no_call(we.reg.wt) # weight loss affects scale
+print_no_call(we.reg.wt.shape) # weight loss affects scale and shape
+```
+
+- Here `wtlossyn = 1` means the patient lost weight in the last six months, while `wtlossyn = 0` means the patient did not lose weight or gained weight.
+- After adjusting for ECOG performance score, `wtlossyn` does *not* appear to have a strong effect on the `scale` of the Weibull AFT model. 
+- In the common-shape model, the acceleration factor for `wtlossyn` is about 1.115, and its 95% confidence interval includes 1. This suggests that weight loss does *not* substantially shift the overall survival time `scale`.
+- When `wtlossyn` is allowed to affect the Weibull `shape` parameter, the AIC **increases slightly** from 2119.138 to 2120.346. The estimated `shape` ratio for `wtlossyn` is about 0.880, with a 95% confidence interval from 0.668 to 1.161. This does not provide clear evidence that weight loss affects the `shape` of the hazard function.
+- There is no strong evidence that weight loss in the last six months has an important effect on either the survival time `scale` or the Weibull hazard `shape`.
+
+---
+
+###  (j) *Can you figure out how to plot the predicted survival curve for an asymptomatic, advanced lung cancer patient who did not lose weight in the last six months?*
+
+```{r problem3-predicted-survival}
+new.lung.patient <- data.frame(ph.ecogcat = 0,wtlossyn = 0) # 预测对象
+pred.time <- seq(1, max(lungdat_wt$time, na.rm = TRUE), length.out = 200)
+pred.surv <- summary(
+  we.reg.wt, # common-shape model with ECOG and weight loss affecting scale
+  type = "survival",
+  t = pred.time,
+  newdata = new.lung.patient,
+  ci = TRUE,
+  tidy = TRUE
+)
+# est 表示生存概率
+head(pred.surv)
+```
+
+```{r problem3-predicted-survival-plot, echo=FALSE}
+ggplot(pred.surv, aes(x = time, y = est)) +
+  geom_ribbon(aes(ymin = lcl, ymax = ucl), alpha = 0.2, fill = "grey70") +
+  geom_line(color = 2, linewidth = 0.8) +
+  labs(x = "Time (days)", y = "Predicted survival probability") +
+  coord_cartesian(ylim = c(0, 1)) +
+  theme_minimal()
+```
+
+- The predicted survival curve is obtained for an asymptomatic advanced lung cancer patient with `ECOG 0` and `wtlossyn = 0`. 
+- The model used for prediction is the common-shape Weibull model with ECOG and `wtlossyn` affecting the `scale` parameter.
+- The fitted survival probability starts close to 1 at early times and decreases gradually over time. 
+- The predicted median survival time is roughly around 410 days, where the survival curve crosses 0.5. 
+- By around 1000 days, the predicted survival probability is about 0.09. 
+- The shaded region represents the 95% confidence interval, which becomes wider at later times, indicating greater uncertainty in long-term survival prediction.
+

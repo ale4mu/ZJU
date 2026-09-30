@@ -1,0 +1,353 @@
+---
+title: "Homework 9"
+author: "张子乐, 3230104237"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    latex_engine: xelatex
+header-includes:
+  - \usepackage[fontset=fandol]{ctex}
+  - \usepackage{float}
+---
+```{r setup, message = F, include=FALSE}
+Sys.setenv(FONTCONFIG_PATH = "C:/Users/admin/AppData/Roaming/TinyTeX/tlpkg/tlpostcode/xetex/conf")
+options(htmltools.dir.version = FALSE)
+knitr::opts_chunk$set(dev = "cairo_pdf")
+library(ggplot2)
+library(MASS)
+knitr::opts_chunk$set(
+  dev = "cairo_pdf",
+  comment = "",        # 全局去掉 ## 前缀
+  collapse = TRUE,     # 全局合并代码和输出框
+  message = FALSE,     # 全局屏蔽包加载信息
+  warning = FALSE,     # 全局屏蔽警告
+  fig.align = "center" # 全局让所有图片居中
+)
+```
+
+
+# Example 9.2: Bayesian Probit Model 
+
+## 1. Background
+
+In a medical study on infections resulting from birth by Caesarean section 
+*three* influence factors have been studied: 
+
+- **$z_{i1}$**: an indicator of whether the Caesarian was planned or not 
+
+- **$z_{i2}$**: an indicator of whether additional risk factors were present at the time of birth 
+
+- **$z_{i3}$**: an indicator of whether antibiotics were given as a prophylaxis. 
+
+The response $Y_i$ is the number of **infections** that were
+observed amongst $n_i$ patients having the same influence factors (covariates).
+
+```{r}
+y <- c(11, 1, 0, 23, 28, 0, 8)     # Number of births with infection
+n <- c(98, 18, 2, 26, 58, 9, 40)   # total
+z1 <- c(1, 0, 0, 1, 0, 1, 0)       # planned
+z2 <- c(1, 1, 0, 1, 1, 0, 0)       # risk factors
+z3 <- c(1, 1, 1, 0, 0, 0, 0)       # antibiotics
+Z <- cbind(1, z1, z2, z3)
+```
+
+## 2. Model
+
+The data can be modeled by assuming that:
+$$ Y_i \sim \text{Binomial}(n_i, \Phi(z_i'\beta)) $$
+
+Where:
+
+*   $z_i = (1, z_{i1}, z_{i2}, z_{i3})$ 
+*   $\Phi(\cdot)$ is the CDF of the standard normal distribution $N(0,1)$.
+  
+
+A suitable normal prior distribution is chosen for the parameter of interest $\beta$:
+$$ \beta \sim N(0, \mathbb{I}/\lambda) $$
+
+According to Bayes' theorem, the posterior density $f(\beta | y_1, \dots, y_n)$ is:
+$$ f(\beta | y_1, \dots, y_n) \propto \left( \prod_{i=1}^N \Phi(z_i'\beta)^{y_i} \cdot (1 - \Phi(z_i'\beta))^{n_i - y_i} \right) \cdot \exp\left(-\frac{\lambda}{2} \sum_{j=0}^3 \beta_j^2\right) $$
+
+```{r}
+# posterior density
+log_posterior <- function(beta, y, n, Z, lambda = 0) {
+  eta <- as.vector(Z %*% beta) # z_i' * beta
+  p <- pnorm(eta) # 计算标准正态分布的累积分布函数 Phi(z_i' * beta)
+  p <- pmax(pmin(p, 1 - 1e-10), 1e-10) # 避免 p=0 或 p=1 
+  log_lik <- sum(y * log(p) + (n - y) * log(1 - p))
+  log_prior <- - (lambda / 2) * sum(beta^2)
+  return(log_lik + log_prior)
+}
+```
+
+## 3. The random walk Metropolis algorithm
+
+Starting from an initial value $\beta^{(0)}$, generate posterior samples by the
+following random walk Metropolis steps for $t = 1,2,\ldots$:
+
+1. Draw $\epsilon \sim N(0, \Sigma)$ and propose
+   $$\beta = \beta^{(t-1)} + \epsilon.$$
+2. Compute
+   $$\alpha(\beta \mid \beta^{(t-1)}) =
+   \min\left\{1,\frac{f(\beta \mid Y_1,\ldots,Y_n)}
+   {f(\beta^{(t-1)} \mid Y_1,\ldots,Y_n)}\right\}.$$
+3. With probability $\alpha(\beta \mid \beta^{(t-1)})$, accept the proposal and
+   set $\beta^{(t)}=\beta$; otherwise keep the previous value
+   $\beta^{(t)}=\beta^{(t-1)}$.
+
+Here the proposal covariance is chosen as $\Sigma = 0.08 I$. We run 50,000
+iterations and discard the first 10,000 samples as burn-in. The results are
+similar to those obtained in the lecture notes.
+
+```{r}
+n_iter <- 50000       # 总次数
+burn_in <- 10000      # 丢弃前 10000 次 
+
+run_rwm <- function(Sigma, n_iter, burn_in, y, n, Z, beta_init = rep(0, 4), seed = 42) {
+  set.seed(seed)
+  beta_chain <- matrix(0, nrow = n_iter, ncol = length(beta_init))
+  beta_current <- beta_init
+  accept_count <- 0
+  
+  for (t in 1:n_iter) {
+    beta_prop <- mvrnorm(1, mu = beta_current, Sigma = Sigma) # 生成候选值
+    log_p_prop <- log_posterior(beta_prop, y, n, Z)
+    log_p_curr <- log_posterior(beta_current, y, n, Z)
+    log_alpha <- log_p_prop - log_p_curr # 接受概率
+    
+    if (log(runif(1)) < log_alpha) {
+      beta_current <- beta_prop
+      accept_count <- accept_count + 1
+    } # 接受的情况
+    
+    beta_chain[t, ] <- beta_current
+  }
+  
+  beta_samples <- beta_chain[(burn_in + 1):n_iter, ] # 丢弃 burn in
+  
+  list(
+    beta_chain = beta_chain,
+    beta_samples = beta_samples,
+    post_mean = colMeans(beta_samples),
+    ci_lower = apply(beta_samples, 2, quantile, probs = 0.025),
+    ci_upper = apply(beta_samples, 2, quantile, probs = 0.975),
+    accept_count = accept_count,
+    acceptance_rate = accept_count / n_iter
+  )
+}
+
+Sigma <- 0.08 * diag(4) #
+rwm_result <- run_rwm(Sigma, n_iter, burn_in, y, n, Z)
+beta_chain <- rwm_result$beta_chain
+beta_samples <- rwm_result$beta_samples
+post_mean <- rwm_result$post_mean
+ci_lower <- rwm_result$ci_lower
+ci_upper <- rwm_result$ci_upper
+accept_count <- rwm_result$accept_count
+```
+
+```{r}
+# 接受率
+cat("Acceptance rate:", rwm_result$acceptance_rate * 100, "%\n\n") 
+```
+
+```{r}
+correlation1 <- numeric(4)
+names(correlation1) <- paste0("beta", 0:3)
+
+for (j in 1:4) {
+  correlation1[j] <- cor(
+    beta_samples[-nrow(beta_samples), j],
+    beta_samples[-1, j]
+  )
+}
+correlation1 # autocorrelation
+```
+
+
+```{r}
+results <- data.frame(
+  Parameter = c("intercept (beta0)", "planned (beta1)", "risk factors (beta2)", "antibiotics (beta3)"),
+  Posterior_Mean = round(post_mean, 4),
+  CI_2.5 = round(ci_lower, 4),
+  CI_97.5 = round(ci_upper, 4)
+)
+print(results) # 后验均值和 95% 置信区间
+```
+
+```{r, fig.width=7, fig.height=5, out.width="85%",echo = FALSE}
+png("sample_paths.png", width = 1200, height = 800, res = 180)
+par(mfrow = c(2, 2), mar = c(3, 3, 2, 1), oma = c(2, 0, 0, 0), mgp = c(2, 0.7, 0), cex = 0.8)
+for (j in 1:4) {
+  plot(
+    beta_chain[, j],
+    type = "l",
+    col = "black",
+    xlab = "sample",
+    ylab = bquote(beta[.(j - 1)]^{(t)}),
+    main = bquote(beta[.(j - 1)]^{(t)})
+  )
+}
+mtext(
+  expression("(a) Sample paths of the " * beta[j]^{(t)}),
+  side = 1,
+  line = 1,
+  outer = TRUE,
+  cex = 1.1
+)
+invisible(dev.off())
+
+cum_avg <- apply(beta_chain, 2, cumsum) / seq_len(n_iter)
+
+png("cumulative_averages.png", width = 1200, height = 800, res = 180)
+par(mfrow = c(2, 2), mar = c(3, 3, 2, 1), oma = c(2, 0, 0, 0), mgp = c(2, 0.7, 0), cex = 0.8)
+for (j in 1:4) {
+  plot(
+    cum_avg[, j],
+    type = "l",
+    col = "black",
+    xlab = "sample",
+    ylab = bquote(sum(beta[.(j - 1)]^{(tau)}, tau == 1, t) / t),
+    main = bquote(sum(beta[.(j - 1)]^{(tau)}, tau == 1, t) / t)
+  )
+}
+mtext(
+  expression("(b) Cumulative averages " * sum(beta[j]^{(tau)}, tau == 1, t) / t),
+  side = 1,
+  line = 1,
+  outer = TRUE,
+  cex = 1.1
+)
+invisible(dev.off())
+
+png("posterior_distributions.png", width = 1200, height = 800, res = 180)
+par(mfrow = c(2, 2), mar = c(3, 3, 2, 1), oma = c(2, 0, 0, 0), mgp = c(2, 0.7, 0), cex = 0.8)
+for (j in 1:4) {
+  hist(
+    beta_samples[, j],
+    breaks = 20,
+    freq = FALSE,
+    col = "gray",
+    border = "black",
+    xlab = "",
+    ylab = "density",
+    main = bquote(beta[.(j - 1)])
+  )
+}
+mtext(
+  expression("(c) Posterior distributions of the " * beta[j]),
+  side = 1,
+  line = 1,
+  outer = TRUE,
+  cex = 1.1
+)
+invisible(dev.off())
+
+knitr::include_graphics(c(
+  "sample_paths.png",
+  "cumulative_averages.png",
+  "posterior_distributions.png"
+))
+```
+
+## 4. A New Proposal Distribution
+
+We can use the idea of GLM to approximate the posterior covariance.
+
+Starting with the log-likelihood for the binomial response $Y_i$:
+$$ \log L_i = Y_i \log(p_i) + (n_i - Y_i) \log(1 - p_i) $$
+
+Taking the derivative with respect to $\beta$ using the chain rule:
+$$ 
+U_i(\beta) = \frac{\partial \log L_i}{\partial \beta} = \frac{\partial \log L_i}{\partial p_i} \cdot \frac{\partial p_i}{\partial \eta_i} \cdot \frac{\partial \eta_i}{\partial \beta} 
+$$
+
+Evaluating these derivatives, we obtain:
+$$ U_i(\beta) = \frac{Y_i - n_i p_i}{p_i(1 - p_i)} \cdot \phi(\eta_i) \cdot z_i $$
+
+The Fisher information matrix for the $i$-th observation is:
+$$ \mathcal{I}_i(\beta) = \text{Var}(U_i(\beta)) = \left( n_i \frac{\phi(\eta_i)^2}{p_i(1 - p_i)} \right) z_i z_i' $$
+
+Summing over all $N$ observations gives the total Fisher information matrix:
+$$ \mathcal{I}(\beta) = \sum_{i=1}^N \mathcal{I}_i(\beta) = \sum_{i=1}^N \underbrace{\left( n_i \frac{\phi(\eta_i)^2}{p_i(1 - p_i)} \right)}_{d_i} z_i z_i' $$
+
+where $d_i$ defines the elements of a diagonal weight matrix $D$:
+$$ d_i = n_i \frac{\phi(\eta_i)^2}{p_i(1 - p_i)} $$
+
+Therefore, we choose the new proposal covariance as
+$$
+\Sigma_{\text{new}} = (Z'DZ)^{-1}
+$$
+where $Z$ is the design matrix and $D$ is the diagonal weight matrix from the
+GLM approximation. 
+
+**Note**: To ensure a fair comparison, 
+we scale $\Sigma_{\text{new}}$ so that its determinant matches that of 
+the original $\Sigma$.
+
+*But we didn't use $\Sigma_{\text{new}} = 2(Z'DZ)^{-1}$ as in the lecture notes*
+
+```{r}
+probit_glm <- glm(cbind(y, n - y) ~ z1 + z2 + z3, family = binomial(link = "probit"))
+eta_hat <- as.vector(Z %*% coef(probit_glm))
+p_hat <- pnorm(eta_hat)
+phi_hat <- dnorm(eta_hat)
+D <- diag(as.vector(n * phi_hat^2 / (p_hat * (1 - p_hat))))
+Sigma_new <- solve(t(Z) %*% D %*% Z)
+scale_factor <- (det(Sigma) / det(Sigma_new))^(1 / 4) # Scale to match determinants
+Sigma_new <- scale_factor * Sigma_new
+round(Sigma_new, 4) # 新的 Sigma
+```
+
+```{r}
+rwm_result_new <- run_rwm(Sigma_new, n_iter, burn_in, y, n, Z)
+beta_chain_new <- rwm_result_new$beta_chain
+beta_samples_new <- rwm_result_new$beta_samples
+post_mean_new <- rwm_result_new$post_mean
+ci_lower_new <- rwm_result_new$ci_lower
+ci_upper_new <- rwm_result_new$ci_upper
+accept_count_new <- rwm_result_new$accept_count
+# 新的接受率
+cat("Acceptance rate with new Sigma:", rwm_result_new$acceptance_rate * 100, "%\n\n") 
+```
+
+```{r}
+correlation_new <- numeric(4)
+names(correlation_new) <- paste0("beta", 0:3)
+
+for (j in 1:4) {
+  correlation_new[j] <- cor(
+    beta_samples_new[-nrow(beta_samples_new), j],
+    beta_samples_new[-1, j]
+  )
+}
+correlation_new # autocorrelation with new Sigma
+```
+
+```{r,echo = FALSE}
+comparison_sigma <- data.frame(
+  Proposal = c("$\\Sigma = 0.08 \\times I$", "$\\Sigma = 2(Z' D Z)^{-1}$"),
+  Acceptance_Rate = round(
+    c(rwm_result$acceptance_rate, rwm_result_new$acceptance_rate),
+    4
+  ),
+  beta0 = round(c(correlation1["beta0"], correlation_new["beta0"]), 4),
+  beta1 = round(c(correlation1["beta1"], correlation_new["beta1"]), 4),
+  beta2 = round(c(correlation1["beta2"], correlation_new["beta2"]), 4),
+  beta3 = round(c(correlation1["beta3"], correlation_new["beta3"]), 4)
+)
+
+knitr::kable(
+  comparison_sigma,
+  caption = "Comparison for two proposal distributions"
+)
+```
+
+### Conclusion
+
+As the lecture notes said,
+
+*The autocorrelation is reduced, and the proportion
+of accepted values obtained increases to `r rwm_result_new$acceptance_rate*100` %. 
+Note that the determinant of both choices of $\Sigma$ was chosen to be the same, 
+so the improvement of the mixing behaviour is due to a difference in the structure of the covariance.*
